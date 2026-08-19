@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createEditorCore, type CoreStatus } from "../core";
 import { createPlatformRuntime, type PlatformRuntime } from "../platform";
-import { createRenderer, type RendererStatus } from "../renderer";
+import { createRenderer, createViewport, type RendererStatus } from "../renderer";
 
 interface DiagnosticState {
   runtime: PlatformRuntime["kind"];
@@ -14,6 +14,7 @@ const initialPlatform = createPlatformRuntime();
 
 /** Presentation and user-interaction boundary. It does not own editor state. */
 export function App() {
+  const surfaceRef = useRef<HTMLCanvasElement>(null);
   const [diagnostics, setDiagnostics] = useState<DiagnosticState>({
     runtime: initialPlatform.kind,
     platform: initialPlatform.status,
@@ -28,7 +29,11 @@ export function App() {
 
     void (async () => {
       await core.initialize();
+      if (!surfaceRef.current) return;
+      renderer.attach(surfaceRef.current);
+      renderer.resize(createViewport(640, 360, window.devicePixelRatio || 1));
       await renderer.initialize();
+      await renderer.render();
 
       if (active) {
         const platform = createPlatformRuntime();
@@ -51,6 +56,7 @@ export function App() {
     <main>
       <h1>Image Editor</h1>
       <p>Runtime validation</p>
+      <canvas ref={surfaceRef} className="renderer-surface" aria-label="Renderer validation surface" />
       <dl>
         <div><dt>Runtime</dt><dd>{diagnostics.runtime.toUpperCase()}</dd></div>
         <div><dt>Core status</dt><dd>{diagnostics.core.toUpperCase()}</dd></div>

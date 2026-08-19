@@ -3,6 +3,7 @@ body { margin: 0; }
 main { max-width: 48rem; margin: 20vh auto; padding: 1.5rem; }
 h1 { margin-bottom: 0.25rem; }
 p { color: #b5b5b5; }
+.renderer-surface { display: block; max-width: 100%; margin-top: 1.5rem; border: 1px solid #333; background: #1b1f2a; }
 dl { margin-top: 2rem; }
 dl div { display: flex; gap: 1rem; padding: 0.6rem 0; border-top: 1px solid #333; }
 dt { color: #b5b5b5; min-width: 9rem; }

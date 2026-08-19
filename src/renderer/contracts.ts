@@ -1,8 +1,20 @@
-import type { Document } from "../core";
+import type { BlendMode, RasterDataReference, Transform } from "../core";
 
-/** Rendering abstraction; concrete WebGPU/native backends belong behind this contract. */
-export interface RenderViewport { width: number; height: number; devicePixelRatio: number; }
-export interface RenderOptions { viewport: RenderViewport; dirtyRegion?: { x: number; y: number; width: number; height: number }; }
-export interface Renderer { initialize(): Promise<void>; render(document: Document, options: RenderOptions): Promise<void>; dispose(): void; }
-export interface RenderCache { invalidate(documentId: string): void; clear(): void; }
-
+/** Immutable renderer-facing data. The renderer never receives a mutable Document. */
+export interface RenderInput { readonly documentId: string; readonly width: number; readonly height: number; readonly rootLayerIds: readonly string[]; readonly layers: Readonly<Record<string, RenderLayer>>; }
+export interface RenderLayerBase { readonly id: string; readonly name: string; readonly visible: boolean; readonly opacity: number; readonly blendMode: BlendMode; readonly transform: Transform; readonly parentId: string | null; }
+export interface RenderRasterLayer extends RenderLayerBase { readonly kind: "raster"; readonly raster: RasterDataReference; }
+export interface RenderGroupLayer extends RenderLayerBase { readonly kind: "group"; readonly childLayerIds: readonly string[]; }
+export type RenderLayer = RenderRasterLayer | RenderGroupLayer;
+/** Viewport state belongs to the renderer, never to a Document. */
+export interface RenderViewport { readonly width: number; readonly height: number; readonly devicePixelRatio: number; readonly zoom: number; readonly offsetX: number; readonly offsetY: number; }
+export interface PhysicalSurfaceSize { readonly width: number; readonly height: number; }
+export interface DirtyRegion { readonly x: number; readonly y: number; readonly width: number; readonly height: number; }
+export interface RenderOptions { readonly dirtyRegion?: DirtyRegion; }
+export type RenderBackendKind = "webgpu" | "canvas2d";
+export type RendererStatus = "idle" | "initializing" | "ready" | "fallback" | "unavailable" | "disposed";
+export type RendererErrorCode = "surface-unavailable" | "webgpu-unavailable" | "webgpu-initialization-failed" | "fallback-unavailable" | "render-failed";
+export interface RendererError { readonly code: RendererErrorCode; readonly message: string; readonly cause?: unknown; }
+export interface RendererStatusDetail { readonly status: RendererStatus; readonly backend?: RenderBackendKind; readonly error?: RendererError; }
+export interface Renderer { readonly status: RendererStatus; readonly detail: RendererStatusDetail; attach(surface: HTMLCanvasElement): void; initialize(): Promise<void>; resize(viewport: RenderViewport): void; render(input?: RenderInput, options?: RenderOptions): Promise<void>; invalidate(): void; dispose(): void; }
+export interface RenderCache { invalidate(documentId: string, dirtyRegion?: DirtyRegion): void; clear(): void; }

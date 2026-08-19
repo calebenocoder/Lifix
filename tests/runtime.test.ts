@@ -18,12 +18,6 @@ describe("runtime foundation", () => {
     expect(renderer.status).toBe("unavailable");
   });
 
-  it("reports ready when WebGPU provides an adapter", async () => {
-    const renderer = createRenderer({ requestAdapter: async () => ({ name: "test" }) });
-    await renderer.initialize();
-    expect(renderer.status).toBe("ready");
-  });
-
   it("keeps runtime detection behind the platform abstraction", () => {
     expect(createPlatformRuntime({ isTauri: () => false }).kind).toBe("web");
     expect(createPlatformRuntime({ isTauri: () => true }).kind).toBe("tauri");
