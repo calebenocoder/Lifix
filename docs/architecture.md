@@ -19,6 +19,14 @@ The cross-language contract is the versioned project DTO plus explicit command/e
 - **React UI:** presentation, interaction state, and command dispatch only.
 - **Tauri:** thin desktop shell that composes platform adapters and a future native Core; it is never the Editor Core.
 
+## UI and workspace boundary
+
+The professional UI foundation lives in `src/ui` and is intentionally downstream of both Core and Renderer contracts. Application semantic tokens are the visual source of truth; shared UI primitives consume their CSS variables, and editor-facing workspace components consume those primitives. Theme changes replace token values rather than component structure, document state, or renderer resources.
+
+Workspace state is a separate, versioned UI model containing stable panel identities, dock regions, tab stacks, nested splits, floating bounds, theme, and preset. It is not part of the native image project format. A `PanelRegistry` maps stable IDs to UI factories at runtime, so serialized layouts never contain React components. Dock target and snap-intent types describe future magnetic preview/commit behavior without implementing a drag engine.
+
+The visible foundation is a diagnostic sandbox, not the final editor workspace. Its two specimen panels prove token, primitive, registry, layout, and theme boundaries while the existing renderer canvas remains independently owned. Moving or restyling workspace surfaces must not rebuild Core snapshots or GPU resources; only a real document-area geometry change may flow through the existing renderer resize API. Full rationale, theme definitions, dependency policy, accessibility rules, and docking direction are recorded in [UI architecture](./ui-architecture.md).
+
 ## Rendering boundary
 
 The renderer is a distinct TypeScript subsystem. It receives a detached `RenderInput` snapshot derived from the authoritative Core document; it may read that snapshot but cannot mutate a `Document`, execute commands, validate document state, or serialize projects. Renderer-owned state is limited to its surface, viewport, selected backend, GPU/Canvas resources, caches, and frame scheduling.

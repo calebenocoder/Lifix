@@ -1,0 +1,11 @@
+import type { DockRegion, FloatingBounds, PanelId } from "./model";
+
+export type DockTargetKind = "workspace-edge" | "panel-edge";
+export type DockEdge = DockRegion | "center";
+export interface DockTarget { readonly id: string; readonly kind: DockTargetKind; readonly edge: DockEdge; readonly bounds: FloatingBounds; readonly accepts: readonly PanelId[] | "all"; }
+export interface SnapIntent { readonly panelId: PanelId; readonly targetId: string; readonly edge: DockEdge; readonly distance: number; readonly previewBounds: FloatingBounds; readonly valid: boolean; }
+export interface Point { readonly x: number; readonly y: number; }
+
+function edgeDistance(point: Point, target: DockTarget): number { const { x, y, width, height } = target.bounds; switch (target.edge) { case "left": return Math.abs(point.x - x); case "right": return Math.abs(point.x - (x + width)); case "top": return Math.abs(point.y - y); case "bottom": return Math.abs(point.y - (y + height)); case "center": return Math.hypot(point.x - (x + width / 2), point.y - (y + height / 2)); } }
+function withinSpan(point: Point, target: DockTarget, threshold: number): boolean { const { x, y, width, height } = target.bounds; return target.edge === "left" || target.edge === "right" ? point.y >= y - threshold && point.y <= y + height + threshold : target.edge === "top" || target.edge === "bottom" ? point.x >= x - threshold && point.x <= x + width + threshold : point.x >= x - threshold && point.x <= x + width + threshold && point.y >= y - threshold && point.y <= y + height + threshold; }
+export function detectSnapIntent(panelId: PanelId, pointer: Point, targets: readonly DockTarget[], threshold = 12): SnapIntent | undefined { if (!Number.isFinite(threshold) || threshold <= 0) throw new RangeError("Snap threshold must be positive"); return targets.map(target => ({ target, distance: edgeDistance(pointer, target) })).filter(candidate => candidate.distance <= threshold && withinSpan(pointer, candidate.target, threshold)).sort((a, b) => a.distance - b.distance || a.target.id.localeCompare(b.target.id)).map(({ target, distance }) => ({ panelId, targetId: target.id, edge: target.edge, distance, previewBounds: { ...target.bounds }, valid: target.accepts === "all" || target.accepts.includes(panelId) }))[0]; }

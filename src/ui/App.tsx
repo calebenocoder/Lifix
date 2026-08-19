@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { CreateGroupCommand, CreateRasterLayerCommand, createEditorCore, type CoreStatus } from "../core";
 import { createPlatformRuntime, type PlatformRuntime } from "../platform";
-import { createDiagnosticRasterSources, createRenderInput, createRenderer, createViewport, InMemoryRasterSourceResolver, type RendererStatus } from "../renderer";
+import { createDiagnosticRasterSources, createRenderInput, createRenderer, createViewport, InMemoryRasterSourceResolver, type Renderer, type RendererStatus } from "../renderer";
+import { themeCssVariables, type ThemeId } from "./design-system";
+import { WorkspaceSandbox } from "./WorkspaceSandbox";
 
 interface DiagnosticState {
   runtime: PlatformRuntime["kind"];
@@ -16,6 +18,8 @@ const diagnosticSources = new InMemoryRasterSourceResolver(createDiagnosticRaste
 /** Presentation and user-interaction boundary. It does not own editor state. */
 export function App() {
   const surfaceRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<Renderer | null>(null);
+  const [themeId, setThemeId] = useState<ThemeId>("soft-modular");
   const [diagnostics, setDiagnostics] = useState<DiagnosticState>({
     runtime: initialPlatform.kind,
     platform: initialPlatform.status,
@@ -27,6 +31,7 @@ export function App() {
     let active = true;
     const core = createEditorCore();
     const renderer = createRenderer({ rasterSources: diagnosticSources });
+    rendererRef.current = renderer;
 
     void (async () => {
       await core.initialize();
@@ -61,21 +66,16 @@ export function App() {
 
     return () => {
       active = false;
+      if (rendererRef.current === renderer) rendererRef.current = null;
       renderer.dispose();
     };
   }, []);
 
-  return (
-    <main>
-      <h1>Image Editor</h1>
-      <p>Runtime validation</p>
-      <canvas ref={surfaceRef} className="renderer-surface" aria-label="Renderer validation surface" />
-      <dl>
-        <div><dt>Runtime</dt><dd>{diagnostics.runtime.toUpperCase()}</dd></div>
-        <div><dt>Core status</dt><dd>{diagnostics.core.toUpperCase()}</dd></div>
-        <div><dt>Renderer status</dt><dd>{diagnostics.renderer.toUpperCase()}</dd></div>
-        <div><dt>Platform status</dt><dd>{diagnostics.platform.toUpperCase()}</dd></div>
-      </dl>
-    </main>
-  );
+  useEffect(() => {
+    rendererRef.current?.invalidate();
+  }, [themeId]);
+
+  return <div className="ui-foundation" data-theme={themeId} style={themeCssVariables(themeId) as CSSProperties}>
+    <WorkspaceSandbox surfaceRef={surfaceRef} diagnostics={diagnostics} themeId={themeId} onThemeChange={setThemeId} />
+  </div>;
 }

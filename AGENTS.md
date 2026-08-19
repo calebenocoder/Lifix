@@ -7,6 +7,11 @@
 - Treat project DTOs and command messages as the TS ↔ Rust boundary. Keep native internals private; do not manually mirror mutable domain models across languages.
 - Introduce WebAssembly only when a complete Rust Core needs to execute in the web runtime and the shared execution benefit outweighs its toolchain and debugging cost.
 - React provides presentation and interaction only. The platform-independent TypeScript Core owns current domain behavior; UI code must not duplicate it.
+- Treat Atlassian Design System as the initial design-language reference, not the application's permanent visual identity. Application semantic tokens and primitives in `src/ui/design-system` remain authoritative.
+- Keep editor components theme-neutral. Do not hard-code theme colors, spacing, radii, elevation, blur, opacity, typography, or interaction states in components; multiple strong themes must share structure, commands, icons, and behavior.
+- Keep the workspace modular and data-driven. Panels use stable registry IDs; docking, tab, split, floating, theme, and preset state belong to the versioned UI workspace model, never to Editor Core documents or project serialization.
+- Keep renderer resources and document computation isolated from panel movement. A workspace geometry change may call the renderer viewport/resize API, but dragging or restyling panels must not reconstruct document snapshots or GPU resources.
+- Prefer application-owned primitives and avoid unnecessary UI or drag-and-drop dependencies. Any custom docking interaction must preserve keyboard access, visible focus, reduced motion, stable identities, localized pointer state, and invalidation-driven renderer behavior.
 - Tauri is the desktop and platform-integration layer, never the application core.
 - Keep platform behavior behind `src/platform` contracts. Do not leak DOM, browser, Tauri, Windows, Linux, or macOS APIs into core.
 - Keep rendering behind `src/renderer` contracts; preserve room for WebGPU and future native GPU backends.
