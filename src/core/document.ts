@@ -5,19 +5,21 @@ export interface Resolution { readonly x: number; readonly y: number; readonly u
 export interface ColorInfo { readonly model: "rgb"; readonly profile: "srgb"; readonly bitDepth: 8 | 16; readonly alpha: boolean; }
 export interface Transform { readonly position: { readonly x: number; readonly y: number }; readonly scale: { readonly x: number; readonly y: number }; readonly rotation: number; }
 export type BlendMode = "normal" | "multiply" | "screen" | "overlay";
+export type GroupCompositingMode = "pass-through" | "isolated";
 /** A locator, not pixel storage; future backends can use tiles, lazy data, or GPU caches. */
 export interface RasterDataReference { readonly kind: "raster-reference"; readonly sourceId?: string; readonly storage: "external" | "tiled" | "lazy" | "gpu-cache"; }
 export interface LayerBase { readonly id: LayerId; name: string; visible: boolean; opacity: number; blendMode: BlendMode; transform: Transform; parentId: LayerId | null; }
 export interface RasterLayer extends LayerBase { readonly kind: "raster"; readonly raster: RasterDataReference; }
-export interface GroupLayer extends LayerBase { readonly kind: "group"; readonly childLayerIds: LayerId[]; }
+export interface GroupLayer extends LayerBase { readonly kind: "group"; compositing: GroupCompositingMode; readonly childLayerIds: LayerId[]; }
 export type Layer = RasterLayer | GroupLayer;
 export interface LayerTreeState { readonly rootLayerIds: LayerId[]; readonly layers: Record<LayerId, Layer>; }
 export interface Document { readonly id: DocumentId; name: string; readonly width: number; readonly height: number; readonly resolution: Resolution; readonly color: ColorInfo; readonly layerTree: LayerTree; readonly metadata: Record<string, string>; }
 export interface LayerOptions { visible?: boolean; opacity?: number; blendMode?: BlendMode; transform?: Transform; }
+export interface GroupLayerOptions extends LayerOptions { compositing?: GroupCompositingMode; }
 export const identityTransform = (): Transform => ({ position: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0 });
 function base(id: LayerId, name: string, options: LayerOptions): LayerBase { const opacity = options.opacity ?? 1; if (opacity < 0 || opacity > 1) throw new RangeError("Layer opacity must be between 0 and 1"); return { id, name, visible: options.visible ?? true, opacity, blendMode: options.blendMode ?? "normal", transform: options.transform ?? identityTransform(), parentId: null }; }
 export function createRasterLayer(id: LayerId, name = "Raster Layer", options: LayerOptions = {}, raster: RasterDataReference = { kind: "raster-reference", storage: "tiled" }): RasterLayer { return { ...base(id, name, options), kind: "raster", raster }; }
-export function createGroupLayer(id: LayerId, name = "Group", options: LayerOptions = {}): GroupLayer { return { ...base(id, name, options), kind: "group", childLayerIds: [] }; }
+export function createGroupLayer(id: LayerId, name = "Group", options: GroupLayerOptions = {}): GroupLayer { return { ...base(id, name, options), kind: "group", compositing: options.compositing ?? "pass-through", childLayerIds: [] }; }
 
 export class LayerTree {
   readonly rootLayerIds: LayerId[] = [];
@@ -33,7 +35,7 @@ export class LayerTree {
   isDescendant(candidate: LayerId, ancestor: LayerId): boolean { let current = this.find(candidate); while (current?.parentId) { if (current.parentId === ancestor) return true; current = this.find(current.parentId); } return false; }
   traverse(): Layer[] { const result: Layer[] = []; const visit = (id: LayerId) => { const layer = this.find(id); if (!layer) return; result.push(layer); if (layer.kind === "group") layer.childLayerIds.forEach(visit); }; this.rootLayerIds.forEach(visit); return result; }
   #insert(siblings: LayerId[], id: LayerId, index?: number): void { siblings.splice(index === undefined ? siblings.length : Math.max(0, Math.min(index, siblings.length)), 0, id); }
-  #clone(layer: Layer): Layer { const base = { ...layer, transform: { position: { ...layer.transform.position }, scale: { ...layer.transform.scale }, rotation: layer.transform.rotation } }; return layer.kind === "group" ? { ...base, kind: "group", childLayerIds: [...layer.childLayerIds] } : { ...base, kind: "raster", raster: { ...layer.raster } }; }
+  #clone(layer: Layer): Layer { const base = { ...layer, transform: { position: { ...layer.transform.position }, scale: { ...layer.transform.scale }, rotation: layer.transform.rotation } }; return layer.kind === "group" ? { ...base, kind: "group", compositing: layer.compositing, childLayerIds: [...layer.childLayerIds] } : { ...base, kind: "raster", raster: { ...layer.raster } }; }
   #unregister(layer: Layer): void { delete this.layers[layer.id]; if (layer.kind === "group") layer.childLayerIds.forEach(id => { const child = this.find(id); if (child) this.#unregister(child); }); }
 }
 export interface DocumentOptions { resolution?: Resolution; color?: ColorInfo; metadata?: Record<string, string>; }

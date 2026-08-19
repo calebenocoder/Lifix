@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AddLayerToGroupCommand, CreateGroupCommand, CreateRasterLayerCommand, DeleteLayerCommand, MoveLayerCommand, RemoveLayerFromGroupCommand, RenameLayerCommand, ReorderLayerCommand, SetBlendModeCommand, SetOpacityCommand, SetVisibilityCommand, createDocument } from "../src/core";
+import { AddLayerToGroupCommand, CreateGroupCommand, CreateRasterLayerCommand, DeleteLayerCommand, MoveLayerCommand, RemoveLayerFromGroupCommand, RenameLayerCommand, ReorderLayerCommand, SetBlendModeCommand, SetGroupCompositingModeCommand, SetOpacityCommand, SetVisibilityCommand, createDocument } from "../src/core";
 
 describe("document commands", () => {
   it("creates layers and groups and can undo creation", () => {
@@ -22,8 +22,10 @@ describe("document commands", () => {
     new SetVisibilityCommand("pixels", false).execute(document);
     new SetOpacityCommand("pixels", 0.5).execute(document);
     new SetBlendModeCommand("pixels", "screen").execute(document);
+    new SetGroupCompositingModeCommand("b", "isolated").execute(document);
     expect(document.layerTree.traverse().map(layer => layer.id)).toEqual(["a", "b", "pixels"]);
     expect(document.layerTree.find("pixels")).toMatchObject({ name: "Artwork", visible: false, opacity: 0.5, blendMode: "screen", parentId: "b" });
+    expect(document.layerTree.find("b")).toMatchObject({ kind: "group", compositing: "isolated" });
   });
 
   it("reorders, removes from groups, deletes, and restores a deleted subtree", () => {
@@ -54,6 +56,7 @@ describe("document commands", () => {
     expect(() => new CreateRasterLayerCommand("bad", "Bad", {}, "missing").execute(document)).toThrow("Parent must be a group");
     expect(() => new SetOpacityCommand("outer", 2).execute(document)).toThrow("opacity");
     expect(() => new SetBlendModeCommand("outer", "invalid" as never).execute(document)).toThrow("Unsupported");
+    expect(() => new SetGroupCompositingModeCommand("outer", "invalid" as never).execute(document)).toThrow("Unsupported"); new CreateRasterLayerCommand("leaf").execute(document); expect(() => new SetGroupCompositingModeCommand("leaf", "isolated").execute(document)).toThrow("group");
     expect(() => new RemoveLayerFromGroupCommand("outer").execute(document)).toThrow("not in a group");
   });
 });

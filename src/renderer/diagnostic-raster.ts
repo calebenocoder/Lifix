@@ -6,6 +6,8 @@ export function createDiagnosticRasterSources(): readonly RasterSource[] {
   const quadrants = pattern("diagnostic-quadrants", 161, 119, (x, y) => x < 12 && y < 12 ? [255, 255, 255, 255] : x >= 149 && y < 12 ? [0, 0, 0, 255] : x < 80 && y < 59 ? [239, 68, 68, 255] : x >= 80 && y < 59 ? [34, 197, 94, 255] : x < 80 ? [59, 130, 246, 255] : [250, 204, 21, 255]);
   const alpha = pattern("diagnostic-alpha", 127, 79, (x, y) => [236, 72 + Math.round(y / 78 * 80), 153, Math.round(x / 126 * 255)]);
   const marker = pattern("diagnostic-marker", 73, 101, (x, y) => x < 10 || y < 10 ? [255, 255, 255, 255] : x > 55 && y > 78 ? [249, 115, 22, 255] : [124, 58, 237, 255]);
+  const screen = pattern("diagnostic-screen", 111, 83, (x, y) => x < 14 || y > 68 ? [37, 99, 235, 210] : [16, 185, 129, Math.round(80 + x / 110 * 150)]);
+  const overlay = pattern("diagnostic-overlay", 97, 67, (x, y) => x > y * 1.2 ? [250, 204, 21, 190] : [30, 64, 175, 210]);
   const hidden = pattern("diagnostic-hidden", 17, 9, (x, y) => [16, 185, 129, (x + y) % 2 ? 255 : 96]);
-  return [background, quadrants, alpha, marker, hidden];
+  return [background, quadrants, alpha, marker, screen, overlay, hidden];
 }

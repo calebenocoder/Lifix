@@ -1,4 +1,4 @@
-import { AddLayerToGroupCommand, CreateGroupCommand, CreateRasterLayerCommand, SetBlendModeCommand, SetOpacityCommand, SetVisibilityCommand, createDocument, deserializeProject, serializeDocument } from "../src/core";
+import { AddLayerToGroupCommand, CreateGroupCommand, CreateRasterLayerCommand, SetBlendModeCommand, SetGroupCompositingModeCommand, SetOpacityCommand, SetVisibilityCommand, createDocument, deserializeProject, serializeDocument } from "../src/core";
 import { describe, expect, it } from "vitest";
 
 describe("native project serialization", () => {
@@ -13,6 +13,7 @@ describe("native project serialization", () => {
     const original = createDocument("doc", "Artwork", 1920, 1080, { resolution: { x: 300, y: 300, unit: "ppi" }, color: { model: "rgb", profile: "srgb", bitDepth: 16, alpha: true } });
     new CreateGroupCommand("folder", "Folder").execute(original);
     new CreateGroupCommand("nested", "Nested", {}, "folder").execute(original);
+    new SetGroupCompositingModeCommand("nested", "isolated").execute(original);
     new CreateRasterLayerCommand("pixels", "Pixels", { transform: { position: { x: 12, y: -4 }, scale: { x: 2, y: 0.5 }, rotation: 15 } }, "nested", undefined, { kind: "raster-reference", storage: "lazy", sourceId: "pixels-001" }).execute(original);
     new SetVisibilityCommand("pixels", false).execute(original);
     new SetOpacityCommand("pixels", 0.25).execute(original);
@@ -21,7 +22,10 @@ describe("native project serialization", () => {
     const restored = deserializeProject(JSON.parse(JSON.stringify(project)));
     expect(serializeDocument(restored)).toEqual(project);
     expect(restored.layerTree.find("pixels")).toMatchObject({ parentId: "nested", visible: false, opacity: 0.25, blendMode: "overlay" });
+    expect(restored.layerTree.find("nested")).toMatchObject({ compositing: "isolated" });
   });
+
+  it("defaults legacy v1 groups to pass-through", () => { const project = serializeDocument(createDocument("doc", "Legacy", 10, 10)); const group = { id: "group", name: "Group", kind: "group", parentId: null, visible: true, opacity: 1, blendMode: "normal", transform: { position: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0 }, childLayerIds: [] }; project.document.layerTree.rootLayerIds.push("group"); project.document.layerTree.layers.group = group as never; expect(deserializeProject(project).layerTree.find("group")).toMatchObject({ compositing: "pass-through" }); });
 
   it.each([
     [{ formatVersion: 2 }, "Unsupported project format version"],

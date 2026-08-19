@@ -76,7 +76,7 @@ function validateLayer(id: string, value: unknown): Layer {
   const raw = asObject(value, `Layer ${id} must be an object`);
   if (raw.id !== id) throw new Error(`Layer ID mismatch: ${id}`);
   const common = { id, name: requiredString(raw.name, `Layer name for ${id}`), visible: boolean(raw.visible, `Layer visibility for ${id}`), opacity: opacity(raw.opacity), blendMode: blendMode(raw.blendMode), transform: transform(raw.transform), parentId: raw.parentId === null ? null : requiredString(raw.parentId, `Parent ID for ${id}`) };
-  if (raw.kind === "group") { if (!Array.isArray(raw.childLayerIds) || !raw.childLayerIds.every(child => typeof child === "string")) throw new Error(`Group children must be string IDs: ${id}`); return { ...common, kind: "group", childLayerIds: [...raw.childLayerIds] }; }
+  if (raw.kind === "group") { if (!Array.isArray(raw.childLayerIds) || !raw.childLayerIds.every(child => typeof child === "string")) throw new Error(`Group children must be string IDs: ${id}`); if (raw.compositing !== undefined && raw.compositing !== "pass-through" && raw.compositing !== "isolated") throw new Error(`Unsupported group compositing mode: ${id}`); return { ...common, kind: "group", compositing: raw.compositing ?? "pass-through", childLayerIds: [...raw.childLayerIds] }; }
   if (raw.kind === "raster") return { ...common, kind: "raster", raster: raster(raw.raster) };
   throw new Error(`Unsupported layer kind: ${String(raw.kind)}`);
 }

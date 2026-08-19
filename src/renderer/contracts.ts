@@ -1,11 +1,11 @@
-import type { BlendMode, RasterDataReference, Transform } from "../core";
+import type { BlendMode, GroupCompositingMode, RasterDataReference, Transform } from "../core";
 import type { RasterResourceErrorCode } from "./raster-source";
 
 /** Immutable renderer-facing data. The renderer never receives a mutable Document. */
 export interface RenderInput { readonly documentId: string; readonly width: number; readonly height: number; readonly rootLayerIds: readonly string[]; readonly layers: Readonly<Record<string, RenderLayer>>; }
 export interface RenderLayerBase { readonly id: string; readonly name: string; readonly visible: boolean; readonly opacity: number; readonly blendMode: BlendMode; readonly transform: Transform; readonly parentId: string | null; }
 export interface RenderRasterLayer extends RenderLayerBase { readonly kind: "raster"; readonly raster: RasterDataReference; }
-export interface RenderGroupLayer extends RenderLayerBase { readonly kind: "group"; readonly childLayerIds: readonly string[]; }
+export interface RenderGroupLayer extends RenderLayerBase { readonly kind: "group"; readonly compositing: GroupCompositingMode; readonly childLayerIds: readonly string[]; }
 export type RenderLayer = RenderRasterLayer | RenderGroupLayer;
 /** Viewport state belongs to the renderer, never to a Document. */
 export interface RenderViewport { readonly width: number; readonly height: number; readonly devicePixelRatio: number; readonly zoom: number; readonly offsetX: number; readonly offsetY: number; }

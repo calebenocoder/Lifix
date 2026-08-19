@@ -7,3 +7,4 @@ export * from "./raster-source";
 export * from "./render-plan";
 export * from "./diagnostic-raster";
 export * from "./compositing";
+export * from "./offscreen";
