@@ -5,15 +5,16 @@ A Linux-first professional image-editing application foundation. This milestone 
 ## Architecture
 
 ```text
-React UI ────────────────> Editor Core <──────────── Rust editor-core
+React UI ────────────────> TypeScript Editor Core
                                   ^
 Platform adapters ────────┘
 Renderer contracts ───────> WebGPU / future native GPU backends
 Tauri desktop shell ──────> platform integration only
+Rust editor-core ─────────> native-core migration boundary (not a duplicate engine)
 ```
 
-- `src/core/`: TypeScript editor-domain contracts.
-- `crates/editor-core/`: platform-independent Rust domain foundation.
+- `src/core/`: the current authoritative, platform-independent document engine.
+- `crates/editor-core/`: native-core migration boundary; it intentionally does not duplicate the TypeScript engine.
 - `src/platform/`: contracts for filesystem, clipboard, dialogs, windowing, input, and OS integration.
 - `src/renderer/`: renderer and cache contracts, ready for WebGPU implementation.
 - `src/ui/`: React presentation layer.
