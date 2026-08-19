@@ -1,5 +1,35 @@
+import { createGroupLayer, createRasterLayer, type BlendMode, type Document, type LayerId, type LayerOptions, type LayerTreeState, type RasterDataReference } from "./document";
+
 /** Commands define the future undoable state transition boundary. */
 export interface EditorCommand<State> { readonly label: string; execute(state: State): State; undo(state: State): State; }
 export interface History<State> { readonly canUndo: boolean; readonly canRedo: boolean; execute(command: EditorCommand<State>): void; undo(): void; redo(): void; }
 export interface Tool { readonly id: string; readonly label: string; }
 
+abstract class DocumentCommand implements EditorCommand<Document> {
+  #previous?: LayerTreeState;
+  abstract readonly label: string;
+  execute(document: Document): Document { this.#previous = document.layerTree.snapshot(); this.apply(document); return document; }
+  undo(document: Document): Document { if (!this.#previous) throw new Error("Command has not been executed"); document.layerTree.restore(this.#previous); return document; }
+  protected abstract apply(document: Document): void;
+  protected layer(document: Document, id: LayerId) { const layer = document.layerTree.find(id); if (!layer) throw new Error(`Unknown layer: ${id}`); return layer; }
+}
+
+export class CreateRasterLayerCommand extends DocumentCommand {
+  readonly label = "Create raster layer";
+  constructor(private readonly id: LayerId, private readonly name?: string, private readonly options: LayerOptions = {}, private readonly parentId: LayerId | null = null, private readonly index?: number, private readonly raster?: RasterDataReference) { super(); }
+  protected apply(document: Document): void { document.layerTree.add(createRasterLayer(this.id, this.name, this.options, this.raster), this.parentId, this.index); }
+}
+export class CreateGroupCommand extends DocumentCommand {
+  readonly label = "Create group";
+  constructor(private readonly id: LayerId, private readonly name?: string, private readonly options: LayerOptions = {}, private readonly parentId: LayerId | null = null, private readonly index?: number) { super(); }
+  protected apply(document: Document): void { document.layerTree.add(createGroupLayer(this.id, this.name, this.options), this.parentId, this.index); }
+}
+export class DeleteLayerCommand extends DocumentCommand { readonly label = "Delete layer"; constructor(private readonly id: LayerId) { super(); } protected apply(document: Document): void { this.layer(document, this.id); document.layerTree.remove(this.id); } }
+export class RenameLayerCommand extends DocumentCommand { readonly label = "Rename layer"; constructor(private readonly id: LayerId, private readonly name: string) { super(); } protected apply(document: Document): void { if (!this.name.trim()) throw new Error("Layer name cannot be empty"); this.layer(document, this.id).name = this.name; } }
+export class SetVisibilityCommand extends DocumentCommand { readonly label = "Set layer visibility"; constructor(private readonly id: LayerId, private readonly visible: boolean) { super(); } protected apply(document: Document): void { this.layer(document, this.id).visible = this.visible; } }
+export class SetOpacityCommand extends DocumentCommand { readonly label = "Set layer opacity"; constructor(private readonly id: LayerId, private readonly opacity: number) { super(); } protected apply(document: Document): void { if (!Number.isFinite(this.opacity) || this.opacity < 0 || this.opacity > 1) throw new RangeError("Layer opacity must be between 0 and 1"); this.layer(document, this.id).opacity = this.opacity; } }
+export class SetBlendModeCommand extends DocumentCommand { readonly label = "Set layer blend mode"; constructor(private readonly id: LayerId, private readonly blendMode: BlendMode) { super(); } protected apply(document: Document): void { if (!(["normal", "multiply", "screen", "overlay"] as string[]).includes(this.blendMode)) throw new Error("Unsupported blend mode"); this.layer(document, this.id).blendMode = this.blendMode; } }
+export class MoveLayerCommand extends DocumentCommand { readonly label: string = "Move layer"; constructor(private readonly id: LayerId, private readonly parentId: LayerId | null, private readonly index?: number) { super(); } protected apply(document: Document): void { this.layer(document, this.id); document.layerTree.move(this.id, this.parentId, this.index); } }
+export class ReorderLayerCommand extends DocumentCommand { readonly label = "Reorder layer"; constructor(private readonly id: LayerId, private readonly index: number) { super(); } protected apply(document: Document): void { if (!Number.isInteger(this.index) || this.index < 0) throw new RangeError("Layer index must be a non-negative integer"); this.layer(document, this.id); document.layerTree.reorder(this.id, this.index); } }
+export class AddLayerToGroupCommand extends MoveLayerCommand { override readonly label = "Add layer to group"; constructor(id: LayerId, groupId: LayerId, index?: number) { super(id, groupId, index); } }
+export class RemoveLayerFromGroupCommand extends DocumentCommand { readonly label = "Remove layer from group"; constructor(private readonly id: LayerId, private readonly index?: number) { super(); } protected apply(document: Document): void { const layer = this.layer(document, this.id); if (layer.parentId === null) throw new Error("Layer is not in a group"); document.layerTree.move(this.id, null, this.index); } }
