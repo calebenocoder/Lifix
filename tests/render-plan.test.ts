@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDocument, createGroupLayer, createRasterLayer } from "../src/core";
-import { createRenderInput, createRenderPlan, createSolidRasterSource, InMemoryRasterSourceResolver, RasterResourceCache } from "../src/renderer";
+import { createRenderInput, createRenderPlan, createSolidRasterSource, InMemoryRasterSourceResolver, RasterResourceCache, transformPoint } from "../src/renderer";
 
 const raster = (id: string, options = {}) => createRasterLayer(id, id, options, { kind: "raster-reference", sourceId: id, storage: "lazy" });
 
@@ -25,6 +25,11 @@ describe("render plan", () => {
   it("maps position, scale, and rotation into one shared affine transform", () => {
     const document = createDocument("doc", "Document", 100, 100); document.layerTree.add(raster("rotated", { transform: { position: { x: 10, y: 20 }, scale: { x: 2, y: 3 }, rotation: 90 } }));
     const transform = createRenderPlan(createRenderInput(document)).layers[0].transform; expect(transform.a).toBeCloseTo(0); expect(transform.b).toBeCloseTo(2); expect(transform.c).toBeCloseTo(-3); expect(transform.d).toBeCloseTo(0); expect(transform.e).toBe(10); expect(transform.f).toBe(20);
+  });
+
+  it("composes nested rotation, non-uniform scale, and negative child scale", () => {
+    const document = createDocument("doc", "Document", 100, 100); document.layerTree.add(createGroupLayer("group", "Group", { transform: { position: { x: 10, y: 20 }, scale: { x: 2, y: 1 }, rotation: 90 } })); document.layerTree.add(raster("mirrored", { transform: { position: { x: 3, y: 4 }, scale: { x: -1, y: 2 }, rotation: 0 } }), "group"); const transform = createRenderPlan(createRenderInput(document)).layers[0].transform;
+    expect(transformPoint(transform, { x: 0, y: 0 })).toEqual({ x: 6, y: 26 }); expect(transformPoint(transform, { x: 1, y: 1 }).x).toBeCloseTo(4); expect(transformPoint(transform, { x: 1, y: 1 }).y).toBeCloseTo(24);
   });
 
   it("keeps unsupported blend modes explicit instead of treating them as normal", () => {

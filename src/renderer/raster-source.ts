@@ -35,13 +35,15 @@ export class InMemoryRasterSourceResolver implements RasterSourceResolver {
 }
 /** Backend-owned cache keyed by stable source ID plus revision; replacement and disposal release resources. */
 export class RasterResourceCache<Resource> {
-  #entries = new Map<string, { revision: number; resource: Resource }>(); lastError?: RasterResourceError;
+  #entries = new Map<string, { revision: number; resource: Resource; usage: number }>(); #usage = 0; lastError?: RasterResourceError;
   constructor(private readonly resolver: RasterSourceResolver, private readonly create: (source: RasterSource) => Resource, private readonly destroy: (resource: Resource) => void = () => {}) {}
   get(reference: RasterDataReference): Resource | undefined {
     let source: RasterSource | undefined; try { source = this.resolver.resolve(reference); } catch (cause) { this.lastError = rasterError("resource-creation-failed", "Raster source resolution failed", reference.sourceId, cause); return undefined; }
     if (!source) { this.lastError = rasterError("missing-source", `Raster source is unavailable: ${reference.sourceId ?? "unidentified"}`, reference.sourceId); return undefined; }
-    try { validateRasterSource(source); const entry = this.#entries.get(source.id); if (entry?.revision === source.revision) { this.lastError = undefined; return entry.resource; } const resource = this.create(source); if (entry) this.destroy(entry.resource); this.#entries.set(source.id, { revision: source.revision, resource }); this.lastError = undefined; return resource; } catch (cause) { this.lastError = isRasterError(cause) ? cause : rasterError("resource-creation-failed", `Raster resource creation failed: ${source.id}`, source.id, cause); return undefined; }
+    try { validateRasterSource(source); const entry = this.#entries.get(source.id); if (entry?.revision === source.revision) { entry.usage = this.#usage; this.lastError = undefined; return entry.resource; } const resource = this.create(source); if (entry) this.destroy(entry.resource); this.#entries.set(source.id, { revision: source.revision, resource, usage: this.#usage }); this.lastError = undefined; return resource; } catch (cause) { this.lastError = isRasterError(cause) ? cause : rasterError("resource-creation-failed", `Raster resource creation failed: ${source.id}`, source.id, cause); return undefined; }
   }
+  beginUsage(): void { this.#usage += 1; }
+  endUsage(): void { this.#entries.forEach((entry, id) => { if (entry.usage !== this.#usage) { this.destroy(entry.resource); this.#entries.delete(id); } }); }
   invalidate(sourceId?: string): void { if (sourceId) { const entry = this.#entries.get(sourceId); if (entry) this.destroy(entry.resource); this.#entries.delete(sourceId); return; } this.#entries.forEach(entry => this.destroy(entry.resource)); this.#entries.clear(); }
   dispose(): void { this.invalidate(); }
   get size(): number { return this.#entries.size; }

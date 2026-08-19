@@ -13,3 +13,4 @@ export function affineFromTransform(transform: Transform): AffineTransform {
   const radians = transform.rotation * Math.PI / 180; const cosine = Math.cos(radians); const sine = Math.sin(radians);
   return { a: cosine * transform.scale.x, b: sine * transform.scale.x, c: -sine * transform.scale.y, d: cosine * transform.scale.y, e: transform.position.x, f: transform.position.y };
 }
+export function transformPoint(transform: AffineTransform, point: { readonly x: number; readonly y: number }): { readonly x: number; readonly y: number } { return { x: transform.a * point.x + transform.c * point.y + transform.e, y: transform.b * point.x + transform.d * point.y + transform.f }; }

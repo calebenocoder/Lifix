@@ -40,6 +40,10 @@ describe("raster source foundation", () => {
     const cache = new RasterResourceCache(new InMemoryRasterSourceResolver(), source => source); expect(cache.get({ kind: "raster-reference", sourceId: "missing", storage: "lazy" })).toBeUndefined(); expect(cache.lastError).toMatchObject({ code: "missing-source", sourceId: "missing" });
   });
 
+  it("releases resources no longer used by a completed render cycle", () => {
+    const resolver = new InMemoryRasterSourceResolver([createSolidRasterSource("used", 1, 1, [0, 0, 0, 255]), createSolidRasterSource("removed", 1, 1, [0, 0, 0, 255])]); const destroyed: string[] = []; const cache = new RasterResourceCache(resolver, source => source.id, resource => destroyed.push(resource)); const reference = (sourceId: string) => ({ kind: "raster-reference" as const, sourceId, storage: "lazy" as const }); cache.get(reference("used")); cache.get(reference("removed")); cache.beginUsage(); cache.get(reference("used")); cache.endUsage(); expect(cache.size).toBe(1); expect(destroyed).toEqual(["removed"]);
+  });
+
   it("keeps full pixel buffers outside the detached Core render snapshot", () => {
     const document = createDocument("doc", "Document", 10, 10); document.layerTree.add(createRasterLayer("layer", "Layer", {}, { kind: "raster-reference", sourceId: "large-source", storage: "lazy" })); const input = createRenderInput(document); expect(JSON.stringify(input)).not.toContain("pixels"); expect(input.layers.layer).toMatchObject({ raster: { sourceId: "large-source" } });
   });
