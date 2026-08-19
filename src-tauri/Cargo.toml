@@ -1,0 +1,15 @@
+[package]
+name = "image-editor-desktop"
+version = "0.1.0"
+description = "Desktop integration layer for Image Editor"
+edition.workspace = true
+license.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2" }
+
+[dependencies]
+editor-core = { path = "../crates/editor-core" }
+tauri = { version = "2" }
+tauri-plugin-opener = "2"
+
