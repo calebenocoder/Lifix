@@ -4,6 +4,7 @@ export interface RasterPixelFormat { readonly id: string; readonly channels: str
 export const RGBA8_UNORM = { id: "rgba8unorm", channels: "rgba", bitsPerChannel: 8, componentType: "unorm", alpha: "straight", rowOrder: "top-to-bottom", bytesPerPixel: 4 } as const satisfies RasterPixelFormat;
 /** The source owns this buffer. Mutating its pixels requires publishing a higher revision. */
 export interface RasterSource { readonly id: string; readonly revision: number; readonly width: number; readonly height: number; readonly format: RasterPixelFormat; readonly pixels: Uint8ClampedArray; }
+export interface RasterDimensions { readonly width: number; readonly height: number; }
 export interface RasterSourceResolver { resolve(reference: RasterDataReference): RasterSource | undefined; subscribe?(listener: (sourceId: string) => void): () => void; }
 export type RasterResourceErrorCode = "missing-source" | "invalid-dimensions" | "invalid-buffer-length" | "unsupported-format" | "resource-creation-failed";
 export interface RasterResourceError { readonly code: RasterResourceErrorCode; readonly message: string; readonly sourceId?: string; readonly cause?: unknown; }
@@ -35,18 +36,31 @@ export class InMemoryRasterSourceResolver implements RasterSourceResolver {
 }
 /** Backend-owned cache keyed by stable source ID plus revision; replacement and disposal release resources. */
 export class RasterResourceCache<Resource> {
-  #entries = new Map<string, { revision: number; resource: Resource; usage: number }>(); #usage = 0; lastError?: RasterResourceError;
+  #entries = new Map<string, { revision: number; dimensions: RasterDimensions; resource: Resource; usage: number }>(); #dimensions = new Map<string, { revision: number; dimensions: RasterDimensions; usage: number }>(); #usage = 0; lastError?: RasterResourceError;
   constructor(private readonly resolver: RasterSourceResolver, private readonly create: (source: RasterSource) => Resource, private readonly destroy: (resource: Resource) => void = () => {}) {}
   get(reference: RasterDataReference): Resource | undefined {
-    let source: RasterSource | undefined; try { source = this.resolver.resolve(reference); } catch (cause) { this.lastError = rasterError("resource-creation-failed", "Raster source resolution failed", reference.sourceId, cause); return undefined; }
-    if (!source) { this.lastError = rasterError("missing-source", `Raster source is unavailable: ${reference.sourceId ?? "unidentified"}`, reference.sourceId); return undefined; }
-    try { validateRasterSource(source); const entry = this.#entries.get(source.id); if (entry?.revision === source.revision) { entry.usage = this.#usage; this.lastError = undefined; return entry.resource; } const resource = this.create(source); if (entry) this.destroy(entry.resource); this.#entries.set(source.id, { revision: source.revision, resource, usage: this.#usage }); this.lastError = undefined; return resource; } catch (cause) { this.lastError = isRasterError(cause) ? cause : rasterError("resource-creation-failed", `Raster resource creation failed: ${source.id}`, source.id, cause); return undefined; }
+    const source = this.#source(reference); if (!source) return undefined;
+    try { const entry = this.#entries.get(source.id); if (entry?.revision === source.revision) { entry.usage = this.#usage; this.lastError = undefined; return entry.resource; } const resource = this.create(source); if (entry) this.destroy(entry.resource); this.#entries.set(source.id, { revision: source.revision, dimensions: { width: source.width, height: source.height }, resource, usage: this.#usage }); this.lastError = undefined; return resource; } catch (cause) { this.lastError = isRasterError(cause) ? cause : rasterError("resource-creation-failed", `Raster resource creation failed: ${source.id}`, source.id, cause); return undefined; }
+  }
+  /** Reuses a known resource without consulting the resolver; falls back to `get` after invalidation or first use. */
+  getCached(reference: RasterDataReference): Resource | undefined { const sourceId = reference.sourceId; const entry = sourceId ? this.#entries.get(sourceId) : undefined; if (entry) { entry.usage = this.#usage; this.lastError = undefined; return entry.resource; } return this.get(reference); }
+  /** Returns validated dimensions without allocating a backend resource. `refresh` checks the resolver for a new revision. */
+  getDimensions(reference: RasterDataReference, refresh = false): RasterDimensions | undefined {
+    const sourceId = reference.sourceId; const dimensions = sourceId ? this.#dimensions.get(sourceId) : undefined;
+    if (dimensions && !refresh) { dimensions.usage = this.#usage; this.lastError = undefined; return dimensions.dimensions; }
+    const source = this.#source(reference); return source ? { width: source.width, height: source.height } : undefined;
   }
   beginUsage(): void { this.#usage += 1; }
-  endUsage(): void { this.#entries.forEach((entry, id) => { if (entry.usage !== this.#usage) { this.destroy(entry.resource); this.#entries.delete(id); } }); }
-  invalidate(sourceId?: string): void { if (sourceId) { const entry = this.#entries.get(sourceId); if (entry) this.destroy(entry.resource); this.#entries.delete(sourceId); return; } this.#entries.forEach(entry => this.destroy(entry.resource)); this.#entries.clear(); }
+  endUsage(): void { this.#entries.forEach((entry, id) => { if (entry.usage !== this.#usage) { this.destroy(entry.resource); this.#entries.delete(id); } }); this.#dimensions.forEach((entry, id) => { if (entry.usage !== this.#usage) this.#dimensions.delete(id); }); }
+  invalidate(sourceId?: string): void { if (sourceId) { const entry = this.#entries.get(sourceId); if (entry) this.destroy(entry.resource); this.#entries.delete(sourceId); this.#dimensions.delete(sourceId); return; } this.#entries.forEach(entry => this.destroy(entry.resource)); this.#entries.clear(); this.#dimensions.clear(); }
   dispose(): void { this.invalidate(); }
   get size(): number { return this.#entries.size; }
+  #source(reference: RasterDataReference): RasterSource | undefined {
+    let source: RasterSource | undefined;
+    try { source = this.resolver.resolve(reference); } catch (cause) { this.lastError = rasterError("resource-creation-failed", "Raster source resolution failed", reference.sourceId, cause); return undefined; }
+    if (!source) { this.lastError = rasterError("missing-source", `Raster source is unavailable: ${reference.sourceId ?? "unidentified"}`, reference.sourceId); return undefined; }
+    try { validateRasterSource(source); this.#dimensions.set(source.id, { revision: source.revision, dimensions: { width: source.width, height: source.height }, usage: this.#usage }); this.lastError = undefined; return source; } catch (cause) { this.lastError = isRasterError(cause) ? cause : rasterError("resource-creation-failed", `Raster source validation failed: ${source.id}`, source.id, cause); return undefined; }
+  }
 }
 export function calculateTextureUploadLayout(width: number, height: number, bytesPerPixel: number = RGBA8_UNORM.bytesPerPixel, alignment: number = 256): TextureUploadLayout {
   if (![width, height, bytesPerPixel, alignment].every(Number.isSafeInteger) || width <= 0 || height <= 0 || bytesPerPixel <= 0 || alignment <= 0) throw new RangeError("Texture upload dimensions and alignment must be positive safe integers"); const unpaddedBytesPerRow = width * bytesPerPixel; const bytesPerRow = Math.ceil(unpaddedBytesPerRow / alignment) * alignment; return { width, height, unpaddedBytesPerRow, bytesPerRow, rowsPerImage: height, byteLength: bytesPerRow * height };
