@@ -23,7 +23,15 @@ The cross-language contract is the versioned project DTO plus explicit command/e
 
 The renderer is a distinct TypeScript subsystem. It receives a detached `RenderInput` snapshot derived from the authoritative Core document; it may read that snapshot but cannot mutate a `Document`, execute commands, validate document state, or serialize projects. Renderer-owned state is limited to its surface, viewport, selected backend, GPU/Canvas resources, caches, and frame scheduling.
 
-Backend selection is internal: WebGPU is preferred when an adapter, device, and canvas context initialize successfully; Canvas 2D is a development and compatibility fallback. Both currently render a deterministic document board only, not document layers. A renderer viewport owns logical dimensions, device-pixel ratio, zoom, and pan offset independently from the image document. Rendering is invalidation-driven and coalesces requests into one animation frame, leaving future dirty-region, tile, cache, and culling work behind the same boundary.
+Backend selection is internal: WebGPU is preferred when an adapter, device, and canvas context initialize successfully; Canvas 2D is a development and compatibility fallback. A renderer viewport owns logical dimensions, device-pixel ratio, zoom, and pan offset independently from the image document. Rendering is invalidation-driven and coalesces requests into one animation frame, leaving future dirty-region, tile, cache, and culling work behind the same boundary.
+
+### Layer compositing foundation
+
+`createRenderPlan` resolves the detached `RenderInput` into a renderer-owned, immutable plan. The plan is bottom-to-top: a later root or sibling layer is drawn above an earlier one. Groups do not draw themselves; their visibility suppresses descendants, their opacity multiplies descendant opacity, and their transform is composed before every descendant transform. This is the current simple group rule; isolated/pass-through groups and group blend passes are deliberately deferred.
+
+The first raster-source boundary is `RasterSourceResolver`. Core retains only a `RasterDataReference`; renderer resources resolve that reference to in-memory RGBA source data and cache backend-ready descriptors by stable source ID plus revision. Cache lifecycle is explicit (`invalidate` and `dispose`) and does not store Core objects. The current diagnostic sources are deterministic solid-color pixel buffers, so both Canvas and WebGPU execute equivalent filled-quad compositing. Texture sampling, tiled sources, decoded assets, and GPU texture caches remain future backend responsibilities.
+
+Only `normal` blend mode is composited in this milestone. Multiply, Screen, and Overlay are retained in the Core model but represented as explicitly skipped render-plan entries, never silently substituted with Normal. Canvas 2D and WebGPU consume the same ordered plan, inherited transforms, visibility, and effective opacity.
 
 ### Viewport coordinate spaces
 

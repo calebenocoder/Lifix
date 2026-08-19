@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculatePhysicalSurfaceSize, createRenderInput, createRenderer, createViewport, type FrameScheduler, type WebGpuProbe } from "../src/renderer";
+import { calculatePhysicalSurfaceSize, createRenderInput, createRenderer, createSolidRasterSource, createViewport, InMemoryRasterSourceResolver, type FrameScheduler, type WebGpuProbe } from "../src/renderer";
 import { createDocument, createRasterLayer } from "../src/core";
 
 function surface(withCanvas = true): { canvas: HTMLCanvasElement; fills: number } {
@@ -58,5 +58,16 @@ describe("renderer foundation", () => {
     const document = createDocument("doc", "Document", 10, 20); document.layerTree.add(createRasterLayer("layer", "Layer"));
     const input = createRenderInput(document); document.layerTree.find("layer")!.name = "Changed";
     expect(input).toMatchObject({ documentId: "doc", width: 10, height: 20, layers: { layer: { name: "Layer", kind: "raster" } } });
+  });
+
+  it("composites normal raster layers in plan order and redraws when the input changes", async () => {
+    const frames = scheduler(); const operations: { color: string; alpha: number; transform: number[] }[] = []; let color = ""; let alpha = 1; let transform: number[] = [];
+    const context = { canvas: undefined as unknown as HTMLCanvasElement, save() {}, restore() {}, beginPath() {}, rect() {}, clip() {}, strokeRect() {}, set lineWidth(_value: number) {}, set strokeStyle(_value: string) {}, set fillStyle(value: string) { color = value; }, set globalAlpha(value: number) { alpha = value; }, setTransform(...value: number[]) { transform = value; }, fillRect() { if (color.startsWith("rgba")) operations.push({ color, alpha, transform }); } };
+    const canvas = { width: 0, height: 0, style: {}, getContext: (kind: string) => kind === "2d" ? context : null } as unknown as HTMLCanvasElement; context.canvas = canvas;
+    const resolver = new InMemoryRasterSourceResolver([createSolidRasterSource("blue", 10, 10, [0, 0, 255, 255]), createSolidRasterSource("red", 10, 10, [255, 0, 0, 255])]); const document = createDocument("doc", "Document", 100, 100);
+    document.layerTree.add(createRasterLayer("blue", "Blue", { transform: { position: { x: 4, y: 5 }, scale: { x: 2, y: 3 }, rotation: 0 } }, { kind: "raster-reference", sourceId: "blue", storage: "lazy" })); document.layerTree.add(createRasterLayer("red", "Red", { opacity: 0.4 }, { kind: "raster-reference", sourceId: "red", storage: "lazy" }));
+    const renderer = createRenderer({ scheduler: frames.scheduler, rasterSources: resolver }); renderer.attach(canvas); renderer.resize(createViewport(100, 100)); await renderer.initialize(); await renderer.render(createRenderInput(document)); frames.run();
+    expect(operations).toEqual([{ color: "rgba(0, 0, 255, 1)", alpha: 1, transform: [2, 0, 0, 3, 4, 5] }, { color: "rgba(255, 0, 0, 1)", alpha: 0.4, transform: [1, 0, 0, 1, 0, 0] }]);
+    document.layerTree.find("red")!.visible = false; await renderer.render(createRenderInput(document)); frames.run(); expect(operations).toHaveLength(3);
   });
 });
