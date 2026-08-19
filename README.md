@@ -24,5 +24,6 @@ Tauri desktop shell ──────> platform integration only
 
 Install frontend dependencies with `npm install`, then run `npm run dev` for the web development interface. Once Rust is installed, use `npm run tauri dev` to run the desktop shell.
 
-The Rust workspace requires a stable Rust toolchain and the normal Tauri Linux prerequisites when building for the primary target. See [docs/architecture.md](docs/architecture.md) for boundary rules.
+The initial runtime screen reports the selected runtime, core lifecycle, renderer bootstrap state, and platform status. `READY` renderer status means WebGPU exposed an adapter; `UNAVAILABLE` is a supported, non-fatal fallback.
 
+The Rust workspace requires a stable Rust toolchain and the normal Tauri Linux prerequisites when building for the primary target. See [docs/architecture.md](docs/architecture.md) for boundary rules.

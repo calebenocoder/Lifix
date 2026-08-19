@@ -7,4 +7,3 @@
   "app": { "windows": [{ "title": "Image Editor", "width": 1200, "height": 800 }], "security": { "csp": null } },
   "bundle": { "active": true, "targets": "all" }
 }
-
