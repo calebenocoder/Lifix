@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createEditorCore, type CoreStatus } from "../core";
 import { createPlatformRuntime, type PlatformRuntime } from "../platform";
-import { createRenderer, createViewport, type RendererStatus } from "../renderer";
+import { createRenderInput, createRenderer, createViewport, type RendererStatus } from "../renderer";
 
 interface DiagnosticState {
   runtime: PlatformRuntime["kind"];
@@ -29,11 +29,14 @@ export function App() {
 
     void (async () => {
       await core.initialize();
-      if (!surfaceRef.current) return;
+      if (!active || !surfaceRef.current) return;
+      const document = core.createDocument("viewport-validation", "Viewport validation", 1200, 800);
+      const input = createRenderInput(document);
       renderer.attach(surfaceRef.current);
       renderer.resize(createViewport(640, 360, window.devicePixelRatio || 1));
       await renderer.initialize();
-      await renderer.render();
+      renderer.fitDocument(input);
+      await renderer.render(input);
 
       if (active) {
         const platform = createPlatformRuntime();

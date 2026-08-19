@@ -23,7 +23,13 @@ The cross-language contract is the versioned project DTO plus explicit command/e
 
 The renderer is a distinct TypeScript subsystem. It receives a detached `RenderInput` snapshot derived from the authoritative Core document; it may read that snapshot but cannot mutate a `Document`, execute commands, validate document state, or serialize projects. Renderer-owned state is limited to its surface, viewport, selected backend, GPU/Canvas resources, caches, and frame scheduling.
 
-Backend selection is internal: WebGPU is preferred when an adapter, device, and canvas context initialize successfully; Canvas 2D is a development and compatibility fallback. Both currently render only a deterministic clear frame. A renderer viewport owns logical dimensions, device-pixel ratio, zoom, and pan offset independently from the image document. Rendering is invalidation-driven and coalesces requests into one animation frame, leaving future dirty-region, tile, cache, and culling work behind the same boundary.
+Backend selection is internal: WebGPU is preferred when an adapter, device, and canvas context initialize successfully; Canvas 2D is a development and compatibility fallback. Both currently render a deterministic document board only, not document layers. A renderer viewport owns logical dimensions, device-pixel ratio, zoom, and pan offset independently from the image document. Rendering is invalidation-driven and coalesces requests into one animation frame, leaving future dirty-region, tile, cache, and culling work behind the same boundary.
+
+### Viewport coordinate spaces
+
+The renderer keeps three spaces explicit: **document space** is the image's unscaled pixel coordinate system; **viewport space** is logical CSS-pixel space; **physical surface space** is the canvas backing-store size, calculated from viewport size × device-pixel ratio. Zoom and pan calculations always use logical viewport coordinates, so a DPR change never changes document position or zoom.
+
+`offsetX` and `offsetY` mean the viewport-space position of document origin `(0, 0)`. Therefore document → viewport is `document * zoom + offset`; the inverse subtracts offset and divides by zoom. Fit-document, fit-width, and actual-size are pure calculations that center the resulting document bounds. Panning and zooming invalidate the renderer but do not modify Core state. Both the Canvas and WebGPU document-board paths consume these shared bounds; future layer passes must do the same rather than create alternate coordinate math.
 
 `src/platform` contains contracts for web and desktop adapters. Browser and Tauri implementations belong outside core and can be selected by composition at application startup.
 

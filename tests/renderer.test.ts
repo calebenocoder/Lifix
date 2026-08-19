@@ -4,7 +4,7 @@ import { createDocument, createRasterLayer } from "../src/core";
 
 function surface(withCanvas = true): { canvas: HTMLCanvasElement; fills: number } {
   let fills = 0;
-  const canvas = { width: 0, height: 0, style: {}, getContext: (kind: string) => kind === "2d" && withCanvas ? { canvas, save() {}, restore() {}, setTransform() {}, set fillStyle(_value: string) {}, fillRect() { fills += 1; } } : null } as unknown as HTMLCanvasElement;
+  const canvas = { width: 0, height: 0, style: {}, getContext: (kind: string) => kind === "2d" && withCanvas ? { canvas, save() {}, restore() {}, beginPath() {}, rect() {}, clip() {}, setTransform() {}, set fillStyle(_value: string) {}, set strokeStyle(_value: string) {}, set lineWidth(_value: number) {}, fillRect() { fills += 1; }, strokeRect() {} } : null } as unknown as HTMLCanvasElement;
   return { canvas, get fills() { return fills; } };
 }
 function scheduler(): { scheduler: FrameScheduler; run(): void; cancelled: number[] } { let callback: (() => void) | undefined; const cancelled: number[] = []; return { scheduler: { request: next => { callback = next; return 7; }, cancel: handle => cancelled.push(handle) }, run: () => callback?.(), cancelled }; }
@@ -42,7 +42,7 @@ describe("renderer foundation", () => {
   it("selects WebGPU when a device and surface context initialize", async () => {
     const frames = scheduler(); let submits = 0; let configured = 0;
     const canvas = { width: 0, height: 0, style: {}, getContext: () => ({ configure() { configured += 1; }, getCurrentTexture: () => ({ createView: () => ({}) }) }) } as unknown as HTMLCanvasElement;
-    const webGpu: WebGpuProbe = { getPreferredCanvasFormat: () => "rgba8unorm", requestAdapter: async () => ({ requestDevice: async () => ({ queue: { submit() { submits += 1; } }, createCommandEncoder: () => ({ beginRenderPass: () => ({ end() {} }), finish: () => ({}) }) }) }) };
+    const webGpu: WebGpuProbe = { getPreferredCanvasFormat: () => "rgba8unorm", requestAdapter: async () => ({ requestDevice: async () => ({ queue: { submit() { submits += 1; }, writeBuffer() {} }, createShaderModule: () => ({}), createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}), createRenderPipeline: () => ({}), createBuffer: () => ({}), createBindGroup: () => ({}), createCommandEncoder: () => ({ beginRenderPass: () => ({ setPipeline() {}, setBindGroup() {}, draw() {}, end() {} }), finish: () => ({}) }) }) }) };
     const renderer = createRenderer({ webGpu, scheduler: frames.scheduler });
     renderer.attach(canvas); await renderer.initialize(); await renderer.render(); frames.run();
     expect(renderer.detail).toMatchObject({ status: "ready", backend: "webgpu" });
