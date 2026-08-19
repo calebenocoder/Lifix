@@ -40,18 +40,30 @@ describe("renderer foundation", () => {
   });
 
   it("selects WebGPU when a device and surface context initialize", async () => {
-    const frames = scheduler(); let submits = 0; let configured = 0;
+    const frames = scheduler(); let submits = 0; let configured = 0; let uploads = 0; let textures = 0; let sampler: unknown;
     const canvas = { width: 0, height: 0, style: {}, getContext: () => ({ configure() { configured += 1; }, getCurrentTexture: () => ({ createView: () => ({}) }) }) } as unknown as HTMLCanvasElement;
-    const webGpu: WebGpuProbe = { getPreferredCanvasFormat: () => "rgba8unorm", requestAdapter: async () => ({ requestDevice: async () => ({ queue: { submit() { submits += 1; }, writeBuffer() {} }, createShaderModule: () => ({}), createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}), createRenderPipeline: () => ({}), createBuffer: () => ({}), createBindGroup: () => ({}), createCommandEncoder: () => ({ beginRenderPass: () => ({ setPipeline() {}, setBindGroup() {}, draw() {}, end() {} }), finish: () => ({}) }) }) }) };
+    const webGpu: WebGpuProbe = { getPreferredCanvasFormat: () => "rgba8unorm", requestAdapter: async () => ({ requestDevice: async () => ({ queue: { submit() { submits += 1; }, writeBuffer() {}, writeTexture() { uploads += 1; } }, createShaderModule: () => ({}), createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}), createRenderPipeline: () => ({}), createBuffer: () => ({}), createBindGroup: () => ({}), createSampler: descriptor => { sampler = descriptor; return {}; }, createTexture: () => { textures += 1; return { createView: () => ({}) }; }, createCommandEncoder: () => ({ beginRenderPass: () => ({ setPipeline() {}, setBindGroup() {}, draw() {}, end() {} }), finish: () => ({}) }) }) }) };
     const renderer = createRenderer({ webGpu, scheduler: frames.scheduler });
     renderer.attach(canvas); await renderer.initialize(); await renderer.render(); frames.run();
     expect(renderer.detail).toMatchObject({ status: "ready", backend: "webgpu" });
-    expect(configured).toBe(1); expect(submits).toBe(1);
+    expect(configured).toBe(1); expect(submits).toBe(1); expect(textures).toBe(1); expect(uploads).toBe(1); expect(sampler).toMatchObject({ magFilter: "linear", minFilter: "linear", addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge" });
+  });
+
+  it("uploads odd-sized textures once and refreshes them after a source revision", async () => {
+    const frames = scheduler(); const uploads: { bytes: number; bytesPerRow: number; width: number; height: number }[] = []; let textures = 0; let destroyed = 0;
+    const canvas = { width: 0, height: 0, style: {}, getContext: () => ({ configure() {}, getCurrentTexture: () => ({ createView: () => ({}) }) }) } as unknown as HTMLCanvasElement;
+    const webGpu: WebGpuProbe = { requestAdapter: async () => ({ requestDevice: async () => ({ queue: { submit() {}, writeBuffer() {}, writeTexture(_destination, data, layout, size) { uploads.push({ bytes: data.byteLength, bytesPerRow: layout.bytesPerRow, width: size.width, height: size.height }); } }, createShaderModule: () => ({}), createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}), createRenderPipeline: () => ({}), createBuffer: () => ({}), createBindGroup: () => ({}), createSampler: () => ({}), createTexture: () => { textures += 1; return { createView: () => ({}), destroy() { destroyed += 1; } }; }, createCommandEncoder: () => ({ beginRenderPass: () => ({ setPipeline() {}, setBindGroup() {}, draw() {}, end() {} }), finish: () => ({}) }) }) }) };
+    const resolver = new InMemoryRasterSourceResolver([createSolidRasterSource("odd", 3, 5, [1, 2, 3, 255])]); const document = createDocument("doc", "Document", 10, 10); document.layerTree.add(createRasterLayer("layer", "Layer", {}, { kind: "raster-reference", sourceId: "odd", storage: "lazy" })); const renderer = createRenderer({ webGpu, scheduler: frames.scheduler, rasterSources: resolver }); renderer.attach(canvas); await renderer.initialize(); await renderer.render(createRenderInput(document)); frames.run(); await renderer.render(createRenderInput(document)); frames.run();
+    expect(textures).toBe(2); expect(uploads.at(-1)).toEqual({ bytes: 1280, bytesPerRow: 256, width: 3, height: 5 }); resolver.set(createSolidRasterSource("odd", 3, 5, [4, 5, 6, 255], 1)); frames.run(); expect(textures).toBe(3); expect(destroyed).toBe(1); renderer.dispose(); expect(destroyed).toBe(3);
   });
 
   it("reports unavailable when neither backend can attach", async () => {
     const renderer = createRenderer(); renderer.attach(surface(false).canvas); await renderer.initialize();
     expect(renderer.status).toBe("unavailable"); expect(renderer.detail.error?.code).toBe("fallback-unavailable");
+  });
+
+  it("skips a missing raster source without taking down the Canvas renderer", async () => {
+    const frames = scheduler(); const target = surface(); const document = createDocument("doc", "Document", 10, 10); document.layerTree.add(createRasterLayer("missing", "Missing", {}, { kind: "raster-reference", sourceId: "missing", storage: "lazy" })); const renderer = createRenderer({ scheduler: frames.scheduler, rasterSources: new InMemoryRasterSourceResolver(), canvasRasterFactory: () => { throw new Error("must not create"); } }); renderer.attach(target.canvas); await renderer.initialize(); await renderer.render(createRenderInput(document)); frames.run(); expect(renderer.status).toBe("fallback"); expect(target.fills).toBe(2);
   });
 
   it("creates a detached render input from Core state", () => {
@@ -61,13 +73,13 @@ describe("renderer foundation", () => {
   });
 
   it("composites normal raster layers in plan order and redraws when the input changes", async () => {
-    const frames = scheduler(); const operations: { color: string; alpha: number; transform: number[] }[] = []; let color = ""; let alpha = 1; let transform: number[] = [];
-    const context = { canvas: undefined as unknown as HTMLCanvasElement, save() {}, restore() {}, beginPath() {}, rect() {}, clip() {}, strokeRect() {}, set lineWidth(_value: number) {}, set strokeStyle(_value: string) {}, set fillStyle(value: string) { color = value; }, set globalAlpha(value: number) { alpha = value; }, setTransform(...value: number[]) { transform = value; }, fillRect() { if (color.startsWith("rgba")) operations.push({ color, alpha, transform }); } };
+    const frames = scheduler(); const operations: { drawable: string; alpha: number; transform: number[]; size: number[] }[] = []; let alpha = 1; let transform: number[] = [];
+    const context = { canvas: undefined as unknown as HTMLCanvasElement, save() {}, restore() {}, beginPath() {}, rect() {}, clip() {}, strokeRect() {}, fillRect() {}, set lineWidth(_value: number) {}, set strokeStyle(_value: string) {}, set fillStyle(_value: string) {}, set imageSmoothingEnabled(_value: boolean) {}, set globalAlpha(value: number) { alpha = value; }, setTransform(...value: number[]) { transform = value; }, drawImage(drawable: { id: string }, _x: number, _y: number, width: number, height: number) { operations.push({ drawable: drawable.id, alpha, transform, size: [width, height] }); } };
     const canvas = { width: 0, height: 0, style: {}, getContext: (kind: string) => kind === "2d" ? context : null } as unknown as HTMLCanvasElement; context.canvas = canvas;
     const resolver = new InMemoryRasterSourceResolver([createSolidRasterSource("blue", 10, 10, [0, 0, 255, 255]), createSolidRasterSource("red", 10, 10, [255, 0, 0, 255])]); const document = createDocument("doc", "Document", 100, 100);
     document.layerTree.add(createRasterLayer("blue", "Blue", { transform: { position: { x: 4, y: 5 }, scale: { x: 2, y: 3 }, rotation: 0 } }, { kind: "raster-reference", sourceId: "blue", storage: "lazy" })); document.layerTree.add(createRasterLayer("red", "Red", { opacity: 0.4 }, { kind: "raster-reference", sourceId: "red", storage: "lazy" }));
-    const renderer = createRenderer({ scheduler: frames.scheduler, rasterSources: resolver }); renderer.attach(canvas); renderer.resize(createViewport(100, 100)); await renderer.initialize(); await renderer.render(createRenderInput(document)); frames.run();
-    expect(operations).toEqual([{ color: "rgba(0, 0, 255, 1)", alpha: 1, transform: [2, 0, 0, 3, 4, 5] }, { color: "rgba(255, 0, 0, 1)", alpha: 0.4, transform: [1, 0, 0, 1, 0, 0] }]);
+    const renderer = createRenderer({ scheduler: frames.scheduler, rasterSources: resolver, canvasRasterFactory: source => ({ id: source.id } as unknown as CanvasImageSource) }); renderer.attach(canvas); renderer.resize(createViewport(100, 100)); await renderer.initialize(); await renderer.render(createRenderInput(document)); frames.run();
+    expect(operations).toEqual([{ drawable: "blue", alpha: 1, transform: [2, 0, 0, 3, 4, 5], size: [10, 10] }, { drawable: "red", alpha: 0.4, transform: [1, 0, 0, 1, 0, 0], size: [10, 10] }]);
     document.layerTree.find("red")!.visible = false; await renderer.render(createRenderInput(document)); frames.run(); expect(operations).toHaveLength(3);
   });
 });
