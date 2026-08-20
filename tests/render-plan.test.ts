@@ -22,6 +22,14 @@ describe("render plan", () => {
     expect(plan.layers).toEqual([]); expect(plan.skipped).toEqual([{ layerId: "inside", reason: "hidden" }, { layerId: "hidden-layer", reason: "hidden" }, { layerId: "transparent", reason: "transparent" }]);
   });
 
+  it("restores repeated layer and nested-group visibility without changing stacking", () => {
+    const document = createDocument("doc", "Document", 100, 100); document.layerTree.add(createGroupLayer("outer", "Outer", { compositing: "isolated" })); document.layerTree.add(createGroupLayer("nested", "Nested"), "outer"); document.layerTree.add(raster("child", { blendMode: "multiply" }), "nested"); document.layerTree.add(raster("top", { blendMode: "screen" }));
+    const ids = () => createRenderPlan(createRenderInput(document)).layers.map(layer => layer.layerId);
+    expect(ids()).toEqual(["child", "top"]);
+    for (let cycle = 0; cycle < 3; cycle += 1) { document.layerTree.find("child")!.visible = false; expect(ids()).toEqual(["top"]); document.layerTree.find("child")!.visible = true; expect(ids()).toEqual(["child", "top"]); }
+    document.layerTree.find("outer")!.visible = false; expect(ids()).toEqual(["top"]); document.layerTree.find("outer")!.visible = true; expect(ids()).toEqual(["child", "top"]);
+  });
+
   it("maps position, scale, and rotation into one shared affine transform", () => {
     const document = createDocument("doc", "Document", 100, 100); document.layerTree.add(raster("rotated", { transform: { position: { x: 10, y: 20 }, scale: { x: 2, y: 3 }, rotation: 90 } }));
     const transform = createRenderPlan(createRenderInput(document)).layers[0].transform; expect(transform.a).toBeCloseTo(0); expect(transform.b).toBeCloseTo(2); expect(transform.c).toBeCloseTo(-3); expect(transform.d).toBeCloseTo(0); expect(transform.e).toBe(10); expect(transform.f).toBe(20);
