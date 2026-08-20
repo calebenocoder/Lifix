@@ -2,7 +2,7 @@
 
 ## Professional workspace shell
 
-The current visible UI is a professional shell built from the foundation primitives, not a visual editor implementation. It is composed from a top application bar, tool-options row, persistent tool strip, document tab, renderer-owned canvas viewport, inspector panel stack, and bottom status bar. `Layers`, `Properties`, and `Color` are registered panel shells with stable IDs and explicit placeholders; none duplicates Core state or commands.
+The current visible UI is a professional shell built from the foundation primitives, not a visual editor implementation. It is composed from a compact top application bar, tool-options row, persistent grouped tool strip, document tab, renderer-owned canvas viewport, inspector panel stack, and restrained bottom status bar. `Layers`, `Properties`, and `Color` are registered panel shells with stable IDs and intentional empty states; none duplicates Core state or commands.
 
 The default **Soft** theme remains modular and uses elevation, gap, and radius tokens. **Flat** preserves the exact component and layout contracts while resolving those same semantic tokens with zero gap/radius/blur. A theme control changes token values only; it must not recreate a Core or Renderer instance.
 
@@ -29,11 +29,13 @@ The current icons are a small application-owned, single-stroke set behind the sh
 
 Tokens cover canvas/workspace backgrounds, panel and overlay surfaces, text, borders, interaction states, spacing, radius, elevation, blur, opacity, typography, motion, structural workspace gap, panel-header height, and control height. Dock candidate, preview, active, and invalid states are explicit semantic interaction tokens. `themeCssVariables` is the only theme-to-CSS mapping step, and completeness is validated against a fixed token-name contract.
 
-- **Soft / Modular (A)** is the default. It uses visible module gaps, moderate rounding, translucent bounded panels/toolbars, restrained blur on toolbars and floating surfaces, and subtle elevation.
-- **Flat / Professional (B)** uses the same components with zero workspace gaps, square panel joins, opaque surfaces, no blur, denser controls, and stronger structural borders.
+- **Soft / Modular (A)** is the default. It uses compact 38px application chrome, 30px controls, 6px module gaps, moderate rounding, translucent bounded panels/toolbars, restrained blur on bounded chrome, and subtle elevation.
+- **Flat / Professional (B)** uses the same components with a denser 34px application chrome, 28px controls, zero workspace gaps, square panel joins, opaque surfaces, no blur, and stronger structural borders.
 - **Reserved (C)** is a typed identity with the same complete contract but intentionally has no independent visual design yet.
 
 Blur is confined to bounded toolbar and floating surfaces. It is never placed over the document-rendering area, and Theme B disables it through tokens. Animation is brief, tokenized, and disabled through `prefers-reduced-motion`.
+
+Typography is deliberately utilitarian: application/menu and panel text use the small UI scale; only the Lifix wordmark is medium weight. Panel headers use a 32px/30px tokenized chrome height, 15–16px single-stroke icons, concise titles, and tokenized padding. The central document area retains the remaining window space and its framing styles only the surrounding pasteboard; document pixels remain the renderer's responsibility.
 
 ## Workspace and panel model
 
@@ -73,4 +75,4 @@ Primitives use native buttons, inputs, selects, headings, and regions first. Ico
 
 ## Current limits
 
-The sandbox is not a docking engine and its specimen panels are not final Layers, Properties, or tool panels. There is no persistence adapter, drag gesture, resizing, close/open command, keyboard docking workflow, tooltip/menu primitive, or panel plugin API yet. Theme C is reserved. These capabilities should extend the current data contracts incrementally without leaking UI state into Core, platform, or Renderer ownership.
+The professional shell is not a docking engine and its panel shells are not final Layers, Properties, Color, or tool panels. There is no persistence adapter, drag gesture, resizing, close/open command, keyboard docking workflow, tooltip/menu primitive, or panel plugin API yet. Theme C is reserved. These capabilities should extend the current data contracts incrementally without leaking UI state into Core, platform, or Renderer ownership.

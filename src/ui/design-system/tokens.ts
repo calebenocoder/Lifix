@@ -7,7 +7,7 @@ export const semanticTokenNames = [
   "elevation.none", "elevation.panel", "elevation.floating", "elevation.modal",
   "blur.none", "blur.panel", "blur.floating", "opacity.panel", "opacity.overlay",
   "font.ui", "font.mono", "font.size.small", "font.size.medium", "font.size.large", "font.weight.normal", "font.weight.medium", "font.weight.strong",
-  "duration.fast", "duration.normal", "easing.standard", "workspace.gap", "panel.headerHeight", "control.height",
+  "duration.fast", "duration.normal", "easing.standard", "workspace.gap", "panel.headerHeight", "panel.padding", "control.height", "icon.size", "application.barHeight", "toolOptions.height", "toolStrip.width", "documentTab.height", "status.height",
 ] as const;
 
 export type SemanticTokenName = typeof semanticTokenNames[number];

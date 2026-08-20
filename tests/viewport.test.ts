@@ -1,4 +1,4 @@
-import { actualSize, clampZoom, createViewport, documentBounds, documentToViewport, fitDocument, fitWidth, panBy, panTo, viewportToDocument, zoomAround } from "../src/renderer";
+import { actualSize, calculatePhysicalSurfaceSize, clampZoom, createViewport, documentBounds, documentToViewport, fitDocument, fitWidth, panBy, panTo, viewportToDocument, zoomAround } from "../src/renderer";
 import { describe, expect, it } from "vitest";
 
 describe("renderer viewport math", () => {
@@ -36,5 +36,14 @@ describe("renderer viewport math", () => {
     const resized = { ...viewport, width: 333, height: 111 };
     expect(resized).toMatchObject({ zoom: 2, offsetX: 100, offsetY: 50, devicePixelRatio: 1.5 });
     expect(documentBounds({ width: 100, height: 200 }, resized)).toEqual({ x: 100, y: 50, width: 200, height: 400 });
+  });
+
+  it("keeps logical viewport geometry separate at common Windows/Linux display scales", () => {
+    expect([1, 1.25, 1.5, 2].map(devicePixelRatio => calculatePhysicalSurfaceSize(createViewport(800, 600, devicePixelRatio)))).toEqual([
+      { width: 800, height: 600 },
+      { width: 1000, height: 750 },
+      { width: 1200, height: 900 },
+      { width: 1600, height: 1200 },
+    ]);
   });
 });

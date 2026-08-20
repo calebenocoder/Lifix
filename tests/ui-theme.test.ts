@@ -25,6 +25,11 @@ describe("UI themes", () => {
     expect(flat["workspace.gap"]).toBe("0px");
     expect(flat["radius.panel"]).toBe("0");
     expect(flat["blur.floating"]).toBe("0");
+    expect(Number.parseInt(soft["application.barHeight"], 10)).toBeGreaterThan(Number.parseInt(flat["application.barHeight"], 10));
+    expect(Number.parseInt(soft["toolStrip.width"], 10)).toBeGreaterThan(Number.parseInt(flat["toolStrip.width"], 10));
+    expect(Number.parseInt(soft["panel.padding"], 10)).toBeGreaterThan(Number.parseInt(flat["panel.padding"], 10));
+    expect(soft["icon.size"]).toBe("16px");
+    expect(flat["icon.size"]).toBe("15px");
     expect(resolveTheme("reserved").status).toBe("reserved");
   });
 });
