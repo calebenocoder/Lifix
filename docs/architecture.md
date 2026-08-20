@@ -31,6 +31,8 @@ Workspace layout remains a separate, versioned UI model. The `professional-shell
 
 The document viewport owns a `ResizeObserver` in the UI composition layer. It reports logical CSS dimensions to the existing renderer `resize` API; the renderer preserves zoom/pan and maps DPR to physical pixels. Theme switches and normal React renders reuse the current renderer instance, render plan, and backend resources. Only real viewport geometry changes request a resize, so workspace presentation never becomes a second rendering implementation. Full rationale, theme definitions, dependency policy, accessibility rules, and docking direction are recorded in [UI architecture](./ui-architecture.md).
 
+Core-backed panels consume detached `EditorSessionSnapshot` values projected by a non-React application adapter. Panels dispatch typed session actions; document-changing actions are translated to Core commands before a new renderer snapshot is created. Selected layer, collapsed groups, and foreground/background colors are editor-session state, while theme/panel layout remains workspace state. Neither domain is serialized into the image document. Non-document session actions never notify the Renderer.
+
 ## Rendering boundary
 
 The renderer is a distinct TypeScript subsystem. It receives a detached `RenderInput` snapshot derived from the authoritative Core document; it may read that snapshot but cannot mutate a `Document`, execute commands, validate document state, or serialize projects. Renderer-owned state is limited to its surface, viewport, selected backend, GPU/Canvas resources, caches, and frame scheduling.

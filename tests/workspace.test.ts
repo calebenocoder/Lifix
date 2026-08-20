@@ -25,6 +25,13 @@ describe("workspace layout", () => {
     expect(layout.regions.right).toMatchObject({ panelIds: ["layers", "properties", "color"], activePanelId: "layers" });
   });
 
+  it("keeps workspace regions and panel identities identical across themes", () => {
+    const soft = createWorkspaceLayout("soft-modular");
+    const flat = createWorkspaceLayout("flat-professional");
+    expect(flat.regions).toEqual(soft.regions);
+    expect(flat.presetId).toBe(soft.presetId);
+  });
+
   it("supports nested splits, tabs, and floating bounds as UI-only data", () => {
     const base = createWorkspaceLayout();
     const layout: WorkspaceLayout = { ...base, regions: { ...base.regions, left: { kind: "split", id: "left-split", axis: "vertical", ratio: 0.4, first: { kind: "panel-stack", id: "left-a", panelIds: ["tool-strip"], activePanelId: "tool-strip" }, second: { kind: "panel-stack", id: "left-b", panelIds: ["layers"], activePanelId: "layers" } }, right: null }, floatingPanels: [] };

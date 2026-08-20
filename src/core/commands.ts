@@ -1,4 +1,4 @@
-import { createGroupLayer, createRasterLayer, type BlendMode, type Document, type GroupCompositingMode, type GroupLayerOptions, type LayerId, type LayerOptions, type LayerTreeState, type RasterDataReference } from "./document";
+import { createGroupLayer, createRasterLayer, type BlendMode, type Document, type GroupCompositingMode, type GroupLayerOptions, type LayerId, type LayerOptions, type LayerTreeState, type RasterDataReference, type Transform } from "./document";
 
 /** Commands define the future undoable state transition boundary. */
 export interface EditorCommand<State> { readonly label: string; execute(state: State): State; undo(state: State): State; }
@@ -30,6 +30,19 @@ export class SetVisibilityCommand extends DocumentCommand { readonly label = "Se
 export class SetOpacityCommand extends DocumentCommand { readonly label = "Set layer opacity"; constructor(private readonly id: LayerId, private readonly opacity: number) { super(); } protected apply(document: Document): void { if (!Number.isFinite(this.opacity) || this.opacity < 0 || this.opacity > 1) throw new RangeError("Layer opacity must be between 0 and 1"); this.layer(document, this.id).opacity = this.opacity; } }
 export class SetBlendModeCommand extends DocumentCommand { readonly label = "Set layer blend mode"; constructor(private readonly id: LayerId, private readonly blendMode: BlendMode) { super(); } protected apply(document: Document): void { if (!(["normal", "multiply", "screen", "overlay"] as string[]).includes(this.blendMode)) throw new Error("Unsupported blend mode"); this.layer(document, this.id).blendMode = this.blendMode; } }
 export class SetGroupCompositingModeCommand extends DocumentCommand { readonly label = "Set group compositing mode"; constructor(private readonly id: LayerId, private readonly compositing: GroupCompositingMode) { super(); } protected apply(document: Document): void { if (this.compositing !== "pass-through" && this.compositing !== "isolated") throw new Error("Unsupported group compositing mode"); const layer = this.layer(document, this.id); if (layer.kind !== "group") throw new Error("Layer must be a group"); layer.compositing = this.compositing; } }
+export class SetTransformCommand extends DocumentCommand {
+  readonly label = "Set layer transform";
+  constructor(private readonly id: LayerId, private readonly transform: Transform) { super(); }
+  protected apply(document: Document): void {
+    const values = [this.transform.position.x, this.transform.position.y, this.transform.scale.x, this.transform.scale.y, this.transform.rotation];
+    if (!values.every(Number.isFinite)) throw new RangeError("Transform values must be finite");
+    this.layer(document, this.id).transform = {
+      position: { ...this.transform.position },
+      scale: { ...this.transform.scale },
+      rotation: this.transform.rotation,
+    };
+  }
+}
 export class MoveLayerCommand extends DocumentCommand { readonly label: string = "Move layer"; constructor(private readonly id: LayerId, private readonly parentId: LayerId | null, private readonly index?: number) { super(); } protected apply(document: Document): void { this.layer(document, this.id); document.layerTree.move(this.id, this.parentId, this.index); } }
 export class ReorderLayerCommand extends DocumentCommand { readonly label = "Reorder layer"; constructor(private readonly id: LayerId, private readonly index: number) { super(); } protected apply(document: Document): void { if (!Number.isInteger(this.index) || this.index < 0) throw new RangeError("Layer index must be a non-negative integer"); this.layer(document, this.id); document.layerTree.reorder(this.id, this.index); } }
 export class AddLayerToGroupCommand extends MoveLayerCommand { override readonly label = "Add layer to group"; constructor(id: LayerId, groupId: LayerId, index?: number) { super(id, groupId, index); } }

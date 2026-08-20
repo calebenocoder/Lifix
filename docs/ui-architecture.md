@@ -55,6 +55,40 @@ Panel definitions provide stable ID, type, title, icon, minimum/preferred/option
 
 The model is desktop-first. Minimum panel sizes and localized overflow preserve usability in narrow windows; horizontal overflow is preferable to silently compressing professional controls below their minimum. Responsive phone layouts are outside the editor target.
 
+## Core-backed panels and editor session
+
+Panel data follows a one-way state path:
+
+```text
+authoritative Core Document
+  -> detached EditorSessionSnapshot
+  -> Layers / Properties / Color panel presentation
+```
+
+`EditorSessionController` is an application-layer adapter, not a second document engine. It keeps the mutable `Document` private, projects only UI-relevant scalar metadata, recursively clones transforms and layer hierarchy, and never copies raster pixel buffers. The Layers panel presents the conventional topmost-first view by reversing each Core sibling list during projection; Core and Renderer storage remain bottom-to-top.
+
+Document actions follow the reverse command path:
+
+```text
+panel action
+  -> typed EditorSessionAction
+  -> existing Core command
+  -> Core Document mutation and validation
+  -> detached RenderInput
+  -> renderer invalidation/frame
+  -> new EditorSessionSnapshot
+```
+
+Visibility, opacity, blend mode, name, transform, and group compositing therefore remain Core-owned. Invalid commands return a safe action result and do not publish a document revision. Commands already retain reversal data, but a complete history stack and Undo/Redo UI remain future work.
+
+State ownership is explicit:
+
+- **Document state:** hierarchy, names, visibility, opacity, blend modes, transforms, and group compositing.
+- **Editor-session state:** one selected layer, expanded group IDs, and foreground/background RGB colors.
+- **Workspace state:** theme, registered panels, splits, positions, and future docking data.
+
+Selection, group expansion, panel scrolling, and session colors publish UI snapshots only. They do not create `RenderInput`, invalidate the Renderer, or touch raster/GPU resources. Foreground/background colors are simple sRGB-like 8-bit editor working values for future tools; they are not serialized document color management.
+
 ## Docking and magnetic attachment
 
 Docking is represented as panel stacks, nested splits, edge regions, and floating bounds. The pure `detectSnapIntent` function is only an architectural prototype: it selects the closest in-threshold edge deterministically, keeps geometric candidacy separate from target validity, and returns token-addressable preview geometry. A complete interaction will follow four phases: free movement, local target detection, visible preview, and commit on release. Snap thresholds must be large enough to feel intentional but must not force accidental docking.
@@ -75,4 +109,4 @@ Primitives use native buttons, inputs, selects, headings, and regions first. Ico
 
 ## Current limits
 
-The professional shell is not a docking engine and its panel shells are not final Layers, Properties, Color, or tool panels. There is no persistence adapter, drag gesture, resizing, close/open command, keyboard docking workflow, tooltip/menu primitive, or panel plugin API yet. Theme C is reserved. These capabilities should extend the current data contracts incrementally without leaking UI state into Core, platform, or Renderer ownership.
+The professional shell is not a docking engine. Layers supports hierarchy, selection, expansion, and visibility; Properties exposes the current Core scalar layer properties; Color provides session RGB/hex values. There is no layer reordering UI, multi-selection, history stack, live GPU thumbnails, persistence adapter, drag gesture, resizing, close/open command, keyboard docking workflow, tooltip/menu primitive, or panel plugin API yet. Theme C is reserved. These capabilities should extend the current data contracts incrementally without leaking UI state into Core, platform, or Renderer ownership.
