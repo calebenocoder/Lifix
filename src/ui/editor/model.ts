@@ -48,4 +48,9 @@ export type EditorSessionAction =
   | { readonly type: "set-foreground-color"; readonly color: EditorColor }
   | { readonly type: "set-background-color"; readonly color: EditorColor };
 
-export interface EditorActionResult { readonly ok: boolean; readonly error?: string; }
+export interface EditorActionResult {
+  readonly ok: boolean;
+  readonly error?: string;
+  /** The Core change succeeded, but a downstream application integration failed. */
+  readonly warning?: string;
+}

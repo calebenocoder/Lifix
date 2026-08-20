@@ -1,4 +1,4 @@
-import { CreateGroupCommand, CreateRasterLayerCommand, createDocument } from "../src/core";
+import { CreateGroupCommand, CreateRasterLayerCommand, DeleteLayerCommand, createDocument } from "../src/core";
 import { colorToHex, createEditorSession, parseHexColor } from "../src/ui/editor";
 import { createRenderInput, type RenderInput } from "../src/renderer";
 import { describe, expect, it } from "vitest";
@@ -36,6 +36,27 @@ describe("editor session projection", () => {
     expect(session.snapshot.documentRevision).toBe(0);
     expect(documentChanges).toBe(0);
   });
+
+  it("reuses the detached document projection for selection and color-only changes", () => {
+    const session = createEditorSession(fixture(), () => undefined);
+    const documentView = session.snapshot.document;
+    expect(session.snapshot).toBe(session.snapshot);
+    session.dispatch({ type: "select-layer", layerId: "top" });
+    expect(session.snapshot.document).toBe(documentView);
+    session.dispatch({ type: "set-foreground-color", color: { r: 12, g: 34, b: 56 } });
+    expect(session.snapshot.document).toBe(documentView);
+    session.dispatch({ type: "toggle-group", layerId: "group" });
+    expect(session.snapshot.document).not.toBe(documentView);
+  });
+
+  it("projects a larger hierarchy in deterministic topmost-first order", () => {
+    const document = createDocument("large", "Large hierarchy", 100, 100);
+    for (let index = 0; index < 60; index += 1) new CreateRasterLayerCommand(`layer-${index}`, `Layer ${index}`).execute(document);
+    const layers = createEditorSession(document, () => undefined).snapshot.document.layers;
+    expect(layers).toHaveLength(60);
+    expect(layers[0].id).toBe("layer-59");
+    expect(layers.at(-1)?.id).toBe("layer-0");
+  });
 });
 
 describe("editor session command bridge", () => {
@@ -61,6 +82,40 @@ describe("editor session command bridge", () => {
     expect(session.dispatch({ type: "rename-layer", layerId: "top", name: "  " }).ok).toBe(false);
     expect(session.dispatch({ type: "select-layer", layerId: "missing" }).ok).toBe(false);
     expect(session.snapshot.documentRevision).toBe(0);
+  });
+
+  it("reconciles selection and expansion after a structural command", () => {
+    const session = createEditorSession(fixture(), () => undefined);
+    session.dispatch({ type: "select-layer", layerId: "child-top" });
+    expect(session.executeDocumentCommand(new DeleteLayerCommand("group")).ok).toBe(true);
+    expect(session.snapshot.selectedLayerId).toBeNull();
+    expect(session.snapshot.selectedLayer).toBeUndefined();
+    expect(session.snapshot.expandedGroupIds).not.toContain("group");
+    expect(session.snapshot.document.layers.map(layer => layer.id)).toEqual(["top", "bottom"]);
+  });
+
+  it("replaces a document while preserving session colors and clearing stale hierarchy state", () => {
+    const changes: string[] = [];
+    const session = createEditorSession(fixture(), document => changes.push(document.id));
+    session.dispatch({ type: "select-layer", layerId: "top" });
+    session.dispatch({ type: "set-foreground-color", color: { r: 1, g: 2, b: 3 } });
+    const replacement = createDocument("replacement", "Replacement", 640, 480);
+    new CreateGroupCommand("replacement-group", "Replacement group").execute(replacement);
+    expect(session.replaceDocument(replacement).ok).toBe(true);
+    expect(changes).toEqual(["replacement"]);
+    expect(session.snapshot.document.id).toBe("replacement");
+    expect(session.snapshot.selectedLayerId).toBeNull();
+    expect(session.snapshot.expandedGroupIds).toEqual(["replacement-group"]);
+    expect(session.snapshot.foregroundColor).toEqual({ r: 1, g: 2, b: 3 });
+  });
+
+  it("keeps successful Core state visible when downstream synchronization reports an error", () => {
+    const session = createEditorSession(fixture(), () => { throw new Error("renderer unavailable"); });
+    const result = session.dispatch({ type: "rename-layer", layerId: "top", name: "Committed" });
+    expect(result).toEqual({ ok: true, warning: "renderer unavailable" });
+    expect(session.snapshot.selectedLayer).toBeUndefined();
+    expect(session.snapshot.document.layers[0].name).toBe("Committed");
+    expect(session.snapshot.documentRevision).toBe(1);
   });
 });
 

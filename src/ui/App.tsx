@@ -84,10 +84,6 @@ export function App() {
     };
   }, []);
 
-  useEffect(() => {
-    rendererRef.current?.invalidate();
-  }, [themeId]);
-
   const resizeRenderer = useCallback((width: number, height: number) => {
     viewportSizeRef.current = { width, height };
     const renderer = rendererRef.current;

@@ -1,5 +1,5 @@
 import { RenameLayerCommand, SetBlendModeCommand, SetGroupCompositingModeCommand, SetOpacityCommand, SetTransformCommand, SetVisibilityCommand, type Document, type EditorCommand, type Layer, type LayerId } from "../../core";
-import type { EditorActionResult, EditorColor, EditorLayerView, EditorSessionAction, EditorSessionSnapshot } from "./model";
+import type { EditorActionResult, EditorColor, EditorDocumentView, EditorLayerView, EditorSessionAction, EditorSessionSnapshot } from "./model";
 
 export type EditorSessionListener = (snapshot: EditorSessionSnapshot) => void;
 export type DocumentChangeListener = (document: Document) => void;
@@ -27,19 +27,35 @@ function projectLayer(layer: Layer, document: Document, expanded: ReadonlySet<La
   };
 }
 
-export function projectEditorSnapshot(document: Document, selectedLayerId: LayerId | null, expandedGroupIds: ReadonlySet<LayerId>, foregroundColor: EditorColor, backgroundColor: EditorColor, documentRevision: number, sessionRevision: number): EditorSessionSnapshot {
+function projectDocument(document: Document, expandedGroupIds: ReadonlySet<LayerId>): EditorDocumentView {
   const layers = [...document.layerTree.rootLayerIds].reverse().map(id => document.layerTree.find(id)).filter((layer): layer is Layer => layer !== undefined).map(layer => projectLayer(layer, document, expandedGroupIds));
-  const find = (nodes: readonly EditorLayerView[]): EditorLayerView | undefined => { for (const node of nodes) { if (node.id === selectedLayerId) return node; const nested = find(node.children); if (nested) return nested; } return undefined; };
+  return { id: document.id, name: document.name, width: document.width, height: document.height, layers };
+}
+
+function findLayer(nodes: readonly EditorLayerView[], selectedLayerId: LayerId | null): EditorLayerView | undefined {
+  for (const node of nodes) {
+    if (node.id === selectedLayerId) return node;
+    const nested = findLayer(node.children, selectedLayerId);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
+function createSnapshot(document: EditorDocumentView, selectedLayerId: LayerId | null, expandedGroupIds: ReadonlySet<LayerId>, foregroundColor: EditorColor, backgroundColor: EditorColor, documentRevision: number, sessionRevision: number): EditorSessionSnapshot {
   return {
     documentRevision,
     sessionRevision,
-    document: { id: document.id, name: document.name, width: document.width, height: document.height, layers },
+    document,
     selectedLayerId,
-    selectedLayer: find(layers),
+    selectedLayer: findLayer(document.layers, selectedLayerId),
     expandedGroupIds: [...expandedGroupIds],
     foregroundColor: cloneColor(foregroundColor),
     backgroundColor: cloneColor(backgroundColor),
   };
+}
+
+export function projectEditorSnapshot(document: Document, selectedLayerId: LayerId | null, expandedGroupIds: ReadonlySet<LayerId>, foregroundColor: EditorColor, backgroundColor: EditorColor, documentRevision: number, sessionRevision: number): EditorSessionSnapshot {
+  return createSnapshot(projectDocument(document, expandedGroupIds), selectedLayerId, expandedGroupIds, foregroundColor, backgroundColor, documentRevision, sessionRevision);
 }
 
 export class EditorSessionController {
@@ -50,12 +66,18 @@ export class EditorSessionController {
   #backgroundColor: EditorColor = { r: 255, g: 255, b: 255 };
   #documentRevision = 0;
   #sessionRevision = 0;
+  #document: Document;
+  #documentView: EditorDocumentView;
+  #snapshot: EditorSessionSnapshot;
 
-  constructor(private readonly document: Document, private readonly onDocumentChange: DocumentChangeListener) {
-    document.layerTree.traverse().forEach(layer => { if (layer.kind === "group") this.#expandedGroupIds.add(layer.id); });
+  constructor(document: Document, private readonly onDocumentChange: DocumentChangeListener) {
+    this.#document = document;
+    this.#expandAllGroups();
+    this.#documentView = projectDocument(this.#document, this.#expandedGroupIds);
+    this.#snapshot = this.#createSnapshot();
   }
 
-  get snapshot(): EditorSessionSnapshot { return projectEditorSnapshot(this.document, this.#selectedLayerId, this.#expandedGroupIds, this.#foregroundColor, this.#backgroundColor, this.#documentRevision, this.#sessionRevision); }
+  get snapshot(): EditorSessionSnapshot { return this.#snapshot; }
 
   subscribe(listener: EditorSessionListener): () => void { this.#listeners.add(listener); listener(this.snapshot); return () => this.#listeners.delete(listener); }
 
@@ -66,24 +88,63 @@ export class EditorSessionController {
         case "toggle-group": this.#toggleGroup(action.layerId); return this.#sessionChanged();
         case "set-foreground-color": this.#setColor("foreground", action.color); return this.#sessionChanged();
         case "set-background-color": this.#setColor("background", action.color); return this.#sessionChanged();
-        case "set-visibility": return this.#execute(new SetVisibilityCommand(action.layerId, action.visible));
-        case "set-opacity": return this.#execute(new SetOpacityCommand(action.layerId, action.opacity));
-        case "set-blend-mode": return this.#execute(new SetBlendModeCommand(action.layerId, action.blendMode));
-        case "rename-layer": return this.#execute(new RenameLayerCommand(action.layerId, action.name));
-        case "set-transform": return this.#execute(new SetTransformCommand(action.layerId, action.transform));
-        case "set-group-compositing": return this.#execute(new SetGroupCompositingModeCommand(action.layerId, action.compositing));
+        case "set-visibility": return this.executeDocumentCommand(new SetVisibilityCommand(action.layerId, action.visible));
+        case "set-opacity": return this.executeDocumentCommand(new SetOpacityCommand(action.layerId, action.opacity));
+        case "set-blend-mode": return this.executeDocumentCommand(new SetBlendModeCommand(action.layerId, action.blendMode));
+        case "rename-layer": return this.executeDocumentCommand(new RenameLayerCommand(action.layerId, action.name));
+        case "set-transform": return this.executeDocumentCommand(new SetTransformCommand(action.layerId, action.transform));
+        case "set-group-compositing": return this.executeDocumentCommand(new SetGroupCompositingModeCommand(action.layerId, action.compositing));
       }
     } catch (cause) {
       return { ok: false, error: cause instanceof Error ? cause.message : "Editor operation failed" };
     }
   }
 
-  #select(layerId: LayerId | null): void { if (layerId !== null && !this.document.layerTree.find(layerId)) throw new Error(`Unknown layer: ${layerId}`); this.#selectedLayerId = layerId; }
-  #toggleGroup(layerId: LayerId): void { const layer = this.document.layerTree.find(layerId); if (layer?.kind !== "group") throw new Error("Layer must be a group"); if (this.#expandedGroupIds.has(layerId)) this.#expandedGroupIds.delete(layerId); else this.#expandedGroupIds.add(layerId); }
+  /** Single application-layer hook for future History execution/grouping. */
+  executeDocumentCommand(command: EditorCommand<Document>): EditorActionResult {
+    try {
+      command.execute(this.#document);
+      this.#documentRevision += 1;
+      this.#reconcileSessionState();
+      this.#publish(true);
+      return this.#notifyDocumentChange();
+    } catch (cause) {
+      return { ok: false, error: cause instanceof Error ? cause.message : "Editor operation failed" };
+    }
+  }
+
+  /** Replaces document state without replacing workspace, renderer, or session ownership. */
+  replaceDocument(document: Document): EditorActionResult {
+    this.#document = document;
+    this.#selectedLayerId = null;
+    this.#expandedGroupIds.clear();
+    this.#expandAllGroups();
+    this.#documentRevision += 1;
+    this.#sessionRevision += 1;
+    this.#publish(true);
+    return this.#notifyDocumentChange();
+  }
+
+  #select(layerId: LayerId | null): void { if (layerId !== null && !this.#document.layerTree.find(layerId)) throw new Error(`Unknown layer: ${layerId}`); this.#selectedLayerId = layerId; }
+  #toggleGroup(layerId: LayerId): void { const layer = this.#document.layerTree.find(layerId); if (layer?.kind !== "group") throw new Error("Layer must be a group"); if (this.#expandedGroupIds.has(layerId)) this.#expandedGroupIds.delete(layerId); else this.#expandedGroupIds.add(layerId); }
   #setColor(target: "foreground" | "background", color: EditorColor): void { if (!validColor(color)) throw new RangeError("RGB channels must be integers between 0 and 255"); if (target === "foreground") this.#foregroundColor = cloneColor(color); else this.#backgroundColor = cloneColor(color); }
-  #execute(command: EditorCommand<Document>): EditorActionResult { command.execute(this.document); this.#documentRevision += 1; this.onDocumentChange(this.document); this.#emit(); return { ok: true }; }
-  #sessionChanged(): EditorActionResult { this.#sessionRevision += 1; this.#emit(); return { ok: true }; }
-  #emit(): void { const snapshot = this.snapshot; this.#listeners.forEach(listener => listener(snapshot)); }
+  #sessionChanged(): EditorActionResult { this.#sessionRevision += 1; this.#publish(false); return { ok: true }; }
+  #expandAllGroups(): void { this.#document.layerTree.traverse().forEach(layer => { if (layer.kind === "group") this.#expandedGroupIds.add(layer.id); }); }
+  #reconcileSessionState(): void {
+    if (this.#selectedLayerId !== null && !this.#document.layerTree.find(this.#selectedLayerId)) this.#selectedLayerId = null;
+    for (const id of this.#expandedGroupIds) if (this.#document.layerTree.find(id)?.kind !== "group") this.#expandedGroupIds.delete(id);
+  }
+  #createSnapshot(): EditorSessionSnapshot { return createSnapshot(this.#documentView, this.#selectedLayerId, this.#expandedGroupIds, this.#foregroundColor, this.#backgroundColor, this.#documentRevision, this.#sessionRevision); }
+  #publish(documentChanged: boolean): void {
+    if (documentChanged) this.#documentView = projectDocument(this.#document, this.#expandedGroupIds);
+    else if (this.#snapshot.expandedGroupIds.length !== this.#expandedGroupIds.size || this.#snapshot.expandedGroupIds.some(id => !this.#expandedGroupIds.has(id))) this.#documentView = projectDocument(this.#document, this.#expandedGroupIds);
+    this.#snapshot = this.#createSnapshot();
+    this.#listeners.forEach(listener => listener(this.#snapshot));
+  }
+  #notifyDocumentChange(): EditorActionResult {
+    try { this.onDocumentChange(this.#document); return { ok: true }; }
+    catch (cause) { return { ok: true, warning: cause instanceof Error ? cause.message : "Document changed, but downstream synchronization failed" }; }
+  }
 }
 
 export function createEditorSession(document: Document, onDocumentChange: DocumentChangeListener): EditorSessionController { return new EditorSessionController(document, onDocumentChange); }

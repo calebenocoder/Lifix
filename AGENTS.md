@@ -7,6 +7,9 @@
 - Treat project DTOs and command messages as the TS ↔ Rust boundary. Keep native internals private; do not manually mirror mutable domain models across languages.
 - Introduce WebAssembly only when a complete Rust Core needs to execute in the web runtime and the shared execution benefit outweighs its toolchain and debugging cost.
 - React provides presentation and interaction only. The platform-independent TypeScript Core owns current domain behavior; UI code must not duplicate it.
+- Keep document, editor-session, workspace/theme, and renderer state separate. Session-only selection, expansion, and working colors must not create render inputs or invalidate renderer resources.
+- Route document edits through `EditorSessionController.executeDocumentCommand`; it is the single future History/transaction integration point. Do not create panel-local history or mutate projected UI snapshots.
+- Treat Core-to-UI projections as detached metadata. Never place raster buffers or renderer/GPU resources in React state, and reconcile session selection when document structure or identity changes.
 - Treat Atlassian Design System as the initial design-language reference, not the application's permanent visual identity. Application semantic tokens and primitives in `src/ui/design-system` remain authoritative.
 - Keep editor components theme-neutral. Do not hard-code theme colors, spacing, radii, elevation, blur, opacity, typography, or interaction states in components; multiple strong themes must share structure, commands, icons, and behavior.
 - Keep the workspace modular and data-driven. Panels use stable registry IDs; docking, tab, split, floating, theme, and preset state belong to the versioned UI workspace model, never to Editor Core documents or project serialization.

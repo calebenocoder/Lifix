@@ -89,6 +89,27 @@ State ownership is explicit:
 
 Selection, group expansion, panel scrolling, and session colors publish UI snapshots only. They do not create `RenderInput`, invalidate the Renderer, or touch raster/GPU resources. Foreground/background colors are simple sRGB-like 8-bit editor working values for future tools; they are not serialized document color management.
 
+The session caches its detached document projection. Selection and color changes publish a new session snapshot while reusing that projection; expansion changes rebuild the UI hierarchy but remain renderer-neutral. Document commands rebuild the projection and create exactly one downstream render-input notification. `replaceDocument` clears stale selection, resets expansion IDs against the replacement hierarchy, preserves session colors, and notifies the existing renderer integration without replacing workspace or theme state.
+
+Theme switching is a workspace-only token change. It does not invalidate the renderer because the current document board and pixels are renderer-owned and theme-independent. Viewport resize remains the only workspace geometry signal sent to the renderer.
+
+## Command, history, and tool interaction boundary
+
+`EditorSessionController.executeDocumentCommand` is the single application-layer execution seam for current panel commands and future History integration. Commands already carry reversal data, but there is no History stack, Undo/Redo, coalescing, or panel-local alternate history. A downstream synchronization failure is reported as a warning after the authoritative Core change and UI projection have been published, so the UI never rolls back to stale optimistic state.
+
+Continuous interactions will use a transaction lifecycle rather than commit every preview sample:
+
+```text
+pointer/keyboard input
+  -> active tool controller
+  -> session-owned preview transaction
+  -> renderer preview/invalidation as required
+  -> one Core command through executeDocumentCommand on commit
+  -> future History records one transaction
+```
+
+The active tool and its options will be editor-session state. Transient pointer coordinates and previews will not enter project serialization or workspace state. Cancellation discards preview state; only commit mutates the Core. This milestone defines the seam but does not implement the Tool Engine or History.
+
 ## Docking and magnetic attachment
 
 Docking is represented as panel stacks, nested splits, edge regions, and floating bounds. The pure `detectSnapIntent` function is only an architectural prototype: it selects the closest in-threshold edge deterministically, keeps geometric candidacy separate from target validity, and returns token-addressable preview geometry. A complete interaction will follow four phases: free movement, local target detection, visible preview, and commit on release. Snap thresholds must be large enough to feel intentional but must not force accidental docking.
@@ -105,8 +126,8 @@ The renderer owns the canvas, viewport, frame scheduler, and GPU resources. Work
 
 ## Accessibility
 
-Primitives use native buttons, inputs, selects, headings, and regions first. Icon-only controls have accessible names; selected toggle-like controls expose pressed state; keyboard focus is visibly drawn with the semantic focus token. Scroll regions can receive keyboard focus. Contrast must remain sufficient in every theme, interaction cannot depend on color alone, reduced motion is respected, and eventual floating/docking operations require non-pointer alternatives. These rules align with the [Atlassian accessibility foundation](https://atlassian.design/foundations/accessibility) without binding the application to Atlassian implementation details.
+Primitives use native buttons, inputs, selects, headings, and regions first. Icon-only controls have accessible names; selected toggle-like controls expose pressed state; keyboard focus is visibly drawn with the semantic focus token. Layer rows select with Enter/Space and expand or collapse groups with ArrowRight/ArrowLeft; disclosure and visibility controls retain explicit accessible names. Property inputs retain valid Core state while allowing temporary text, commit on blur/Enter, cancel with Escape, and resynchronize when the selected Core layer changes. Scroll regions can receive keyboard focus. Contrast must remain sufficient in every theme, interaction cannot depend on color alone, reduced motion is respected, and eventual floating/docking operations require non-pointer alternatives. These rules align with the [Atlassian accessibility foundation](https://atlassian.design/foundations/accessibility) without binding the application to Atlassian implementation details.
 
 ## Current limits
 
-The professional shell is not a docking engine. Layers supports hierarchy, selection, expansion, and visibility; Properties exposes the current Core scalar layer properties; Color provides session RGB/hex values. There is no layer reordering UI, multi-selection, history stack, live GPU thumbnails, persistence adapter, drag gesture, resizing, close/open command, keyboard docking workflow, tooltip/menu primitive, or panel plugin API yet. Theme C is reserved. These capabilities should extend the current data contracts incrementally without leaking UI state into Core, platform, or Renderer ownership.
+The professional shell is not a docking engine. Layers supports hierarchy, selection, expansion, and visibility; Properties exposes the current Core scalar layer properties; Color provides session RGB/hex values. The recursive hierarchy is suitable for current lightweight documents; row virtualization should be considered when profiling shows hundreds or thousands of visible rows, without changing the session projection contract. There is no layer reordering UI, multi-selection, history stack, live GPU thumbnails, persistence adapter, drag gesture, resizing, close/open command, keyboard docking workflow, tooltip/menu primitive, or panel plugin API yet. Theme C is reserved. These capabilities should extend the current data contracts incrementally without leaking UI state into Core, platform, or Renderer ownership.

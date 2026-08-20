@@ -6,7 +6,11 @@ export function LayerRow({ layer, depth, selectedLayerId, dispatch }: { readonly
   const selected = layer.id === selectedLayerId;
   const select = () => dispatch({ type: "select-layer", layerId: layer.id });
   return <>
-    <div className="layer-row" role="treeitem" aria-level={depth + 1} aria-selected={selected} aria-expanded={layer.kind === "group" ? layer.expanded : undefined} tabIndex={0} style={{ paddingInlineStart: `calc(var(--ui-space-050) + ${depth} * var(--ui-space-150))` }} onClick={select} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(); } }}>
+    <div className="layer-row" role="treeitem" aria-level={depth + 1} aria-selected={selected} aria-expanded={layer.kind === "group" ? layer.expanded : undefined} tabIndex={0} style={{ paddingInlineStart: `calc(var(--ui-space-050) + ${depth} * var(--ui-space-150))` }} onClick={select} onKeyDown={event => {
+      if (event.target !== event.currentTarget) return;
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(); }
+      if (layer.kind === "group" && ((event.key === "ArrowRight" && !layer.expanded) || (event.key === "ArrowLeft" && layer.expanded))) { event.preventDefault(); dispatch({ type: "toggle-group", layerId: layer.id }); }
+    }}>
       {layer.kind === "group" ? <IconButton className={`layer-row__disclosure${layer.expanded ? " layer-row__disclosure--expanded" : ""}`} label={`${layer.expanded ? "Collapse" : "Expand"} ${layer.name}`} icon="chevron" onClick={event => { event.stopPropagation(); dispatch({ type: "toggle-group", layerId: layer.id }); }} /> : <span className="layer-row__spacer" />}
       <IconButton className="layer-row__visibility" label={`${layer.visible ? "Hide" : "Show"} ${layer.name}`} icon={layer.visible ? "eye" : "eye-off"} onClick={event => { event.stopPropagation(); dispatch({ type: "set-visibility", layerId: layer.id, visible: !layer.visible }); }} />
       <span className={`layer-thumbnail layer-thumbnail--${layer.kind}`} aria-hidden="true"><Icon name={layer.kind === "group" ? "layers" : "raster"} /></span>
