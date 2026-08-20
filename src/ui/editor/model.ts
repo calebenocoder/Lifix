@@ -1,4 +1,5 @@
 import type { BlendMode, GroupCompositingMode, Layer, LayerId, Transform } from "../../core";
+import type { ToolId } from "./tool-state";
 
 export interface EditorColor { readonly r: number; readonly g: number; readonly b: number; }
 
@@ -34,6 +35,9 @@ export interface EditorSessionSnapshot {
   readonly expandedGroupIds: readonly LayerId[];
   readonly foregroundColor: EditorColor;
   readonly backgroundColor: EditorColor;
+  /** Low-frequency tool state for UI presentation; pointer preview data stays outside React. */
+  readonly activeToolId: ToolId;
+  readonly interactionActive: boolean;
 }
 
 export type EditorSessionAction =
@@ -46,7 +50,8 @@ export type EditorSessionAction =
   | { readonly type: "set-transform"; readonly layerId: LayerId; readonly transform: Transform }
   | { readonly type: "set-group-compositing"; readonly layerId: LayerId; readonly compositing: GroupCompositingMode }
   | { readonly type: "set-foreground-color"; readonly color: EditorColor }
-  | { readonly type: "set-background-color"; readonly color: EditorColor };
+  | { readonly type: "set-background-color"; readonly color: EditorColor }
+  | { readonly type: "set-active-tool"; readonly toolId: ToolId };
 
 export interface EditorActionResult {
   readonly ok: boolean;

@@ -108,7 +108,43 @@ pointer/keyboard input
   -> future History records one transaction
 ```
 
-The active tool and its options will be editor-session state. Transient pointer coordinates and previews will not enter project serialization or workspace state. Cancellation discards preview state; only commit mutates the Core. This milestone defines the seam but does not implement the Tool Engine or History.
+The active tool and its options are editor-session state. Transient pointer coordinates and previews never enter project serialization or workspace state. Cancellation discards preview state; only commit mutates the Core. The Tool Engine foundation is implemented below; History remains deferred.
+
+## Tool and interaction foundation
+
+`src/ui/tools` is the sole interaction boundary for the document viewport. Its immutable `ToolRegistry` maps stable session IDs (`move`, `marquee`, `brush`, `eraser`, `crop`, `text`, `shape`, `hand`, and `zoom`) to display metadata, icon identity, cursor intent, optional shortcut metadata, and controller factories. The tool strip derives from that registry. Active tool selection is low-frequency `EditorSessionSnapshot` state, never Document or workspace state; changing it does not create a `RenderInput`.
+
+```text
+DOM Pointer / keyboard event
+  -> ToolInputRouter
+  -> active ToolController
+  -> InteractionTransaction + session preview
+  -> DOM interaction overlay
+  -> optional one executeDocumentCommand() commit
+  -> Core -> RenderInput -> Renderer
+```
+
+`ToolContext` is deliberately narrow: it supplies a detached session snapshot, renderer viewport read access, preview begin/update/finish functions, and the existing command boundary. It never provides a mutable Document, React state setter, DOM ownership, or GPU resource. Controllers have optional activate/deactivate, pointer, keyboard, and disposal callbacks; they may not bypass `executeDocumentCommand` for committed changes.
+
+The current Move registry entry is a deliberately harmless diagnostic controller, not a Move tool. It captures one pointer, records document-space start/current points, shows a temporary marker, and clears it on completion. It changes no layer transform, pixels, or Core document state. This proves the complete routing path without prematurely implementing editing behavior.
+
+### Coordinates, input, and focus
+
+The only coordinate pipeline is:
+
+```text
+client CSS coordinates -> logical viewport coordinates -> document coordinates -> future layer-local coordinates
+```
+
+`clientToViewport` accounts for the surface bounding rectangle and logical viewport dimensions; `viewportToDocument` remains the renderer-owned zoom/pan conversion. Device pixel ratio is intentionally absent from tool coordinates because it belongs only to physical surface sizing. One active editing pointer is captured on the viewport after controller acceptance and released on pointer up, cancellation, tool replacement, document replacement, or teardown. Pointer type, buttons, pressure, and tilt are retained for future pen/brush work.
+
+Modifier state is normalized to Shift, Alt/Option semantic modifier, Control, and Meta. Tool shortcuts are registry metadata and run only on the focused viewport when the target is not an input, textarea, select, or content-editable element. Escape cancels an active viewport interaction; Escape in a field remains local to that field.
+
+### Preview, overlay, and future tools
+
+`InteractionTransaction` defines begin, update, commit, and cancel semantics. Preview state is private session interaction state rather than a React subscription: pointer movement does not rebuild document projections, RenderInput, render plans, textures, or GPU resources. The overlay is an independent, requestAnimationFrame-coalesced DOM surface above the renderer canvas. It is not part of document pixels or raster compositing.
+
+Future **Move** previews a layer transform and commits one Core transform command. **Hand** and **Zoom** operate renderer viewport pan/zoom only, never Core document commands. **Brush** will use a specialized high-frequency stroke system rather than React state. **Text** will enter an explicit editable mode that suspends tool keyboard routing. Marquee, crop, shape, paths, masks, filters, and all final editing behaviors remain deferred.
 
 ## Docking and magnetic attachment
 

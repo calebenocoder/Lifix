@@ -81,6 +81,10 @@ The renderer keeps three spaces explicit: **document space** is the image's unsc
 
 React (`src/ui`) is presentation and interaction. Tauri (`src-tauri`) is solely the desktop shell and platform-integration boundary. Linux is the primary deployment target; no Windows-specific behavior belongs in core.
 
+### Tool interaction boundary
+
+The renderer canvas remains the document-pixel surface. `src/ui/tools` owns the independent DOM interaction overlay, centralized pointer/keyboard router, client-to-logical-viewport-to-document coordinate bridge, and controller lifecycle. Tools receive only detached session/viewport information through `ToolContext`; committed edits must pass through `EditorSessionController.executeDocumentCommand`, while pointer previews never create `RenderInput` or renderer resources. Hand and Zoom are future renderer viewport operations; Move is a future preview-then-transform-command operation. The current pointer marker is diagnostic-only and does not edit a Document.
+
 ## Runtime foundation
 
 `createEditorCore` owns the minimal core lifecycle and is consumed through its public API by the composition root in the React UI. `createRenderer` probes WebGPU behind the renderer boundary; it reports `unavailable` instead of failing when a browser or webview does not provide a GPU adapter. `createPlatformRuntime` is the only frontend runtime detector and returns a neutral `web` or `tauri` result to the UI.
