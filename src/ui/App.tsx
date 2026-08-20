@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { CreateGroupCommand, CreateRasterLayerCommand, createEditorCore, type CoreStatus } from "../core";
 import { createPlatformRuntime, type PlatformRuntime } from "../platform";
 import { createDiagnosticRasterSources, createRenderInput, createRenderer, createViewport, InMemoryRasterSourceResolver, type Renderer, type RendererStatus } from "../renderer";
 import { themeCssVariables, type ThemeId } from "./design-system";
-import { WorkspaceSandbox } from "./WorkspaceSandbox";
+import { WorkspaceShell } from "./WorkspaceShell";
 
 interface DiagnosticState {
   runtime: PlatformRuntime["kind"];
@@ -19,6 +19,8 @@ const diagnosticSources = new InMemoryRasterSourceResolver(createDiagnosticRaste
 export function App() {
   const surfaceRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
+  const inputRef = useRef<ReturnType<typeof createRenderInput> | null>(null);
+  const viewportSizeRef = useRef<{ width: number; height: number } | null>(null);
   const [themeId, setThemeId] = useState<ThemeId>("soft-modular");
   const [diagnostics, setDiagnostics] = useState<DiagnosticState>({
     runtime: initialPlatform.kind,
@@ -47,8 +49,10 @@ export function App() {
       new CreateRasterLayerCommand("marker", "Orientation marker", { transform: { position: { x: 570, y: 290 }, scale: { x: 1.8, y: 1.8 }, rotation: 18 } }, null, undefined, { kind: "raster-reference", sourceId: "diagnostic-marker", storage: "lazy" }).execute(document);
       new CreateRasterLayerCommand("hidden", "Hidden", { visible: false, transform: { position: { x: 720, y: 160 }, scale: { x: 1, y: 1 }, rotation: 0 } }, null, undefined, { kind: "raster-reference", sourceId: "diagnostic-hidden", storage: "lazy" }).execute(document);
       const input = createRenderInput(document);
+      inputRef.current = input;
       renderer.attach(surfaceRef.current);
-      renderer.resize(createViewport(640, 360, window.devicePixelRatio || 1));
+      const initialSize = viewportSizeRef.current ?? { width: 640, height: 360 };
+      renderer.resize(createViewport(initialSize.width, initialSize.height, window.devicePixelRatio || 1));
       await renderer.initialize();
       renderer.fitDocument(input);
       await renderer.render(input);
@@ -75,7 +79,15 @@ export function App() {
     rendererRef.current?.invalidate();
   }, [themeId]);
 
+  const resizeRenderer = useCallback((width: number, height: number) => {
+    viewportSizeRef.current = { width, height };
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    const viewport = renderer.viewport;
+    renderer.resize(createViewport(width, height, window.devicePixelRatio || 1, viewport.zoom, viewport.offsetX, viewport.offsetY));
+  }, []);
+
   return <div className="ui-foundation" data-theme={themeId} style={themeCssVariables(themeId) as CSSProperties}>
-    <WorkspaceSandbox surfaceRef={surfaceRef} diagnostics={diagnostics} themeId={themeId} onThemeChange={setThemeId} />
+    <WorkspaceShell surfaceRef={surfaceRef} diagnostics={diagnostics} themeId={themeId} onThemeChange={setThemeId} onViewportResize={resizeRenderer} />
   </div>;
 }

@@ -25,7 +25,11 @@ The professional UI foundation lives in `src/ui` and is intentionally downstream
 
 Workspace state is a separate, versioned UI model containing stable panel identities, dock regions, tab stacks, nested splits, floating bounds, theme, and preset. It is not part of the native image project format. A `PanelRegistry` maps stable IDs to UI factories at runtime, so serialized layouts never contain React components. Dock target and snap-intent types describe future magnetic preview/commit behavior without implementing a drag engine.
 
-The visible foundation is a diagnostic sandbox, not the final editor workspace. Its two specimen panels prove token, primitive, registry, layout, and theme boundaries while the existing renderer canvas remains independently owned. Moving or restyling workspace surfaces must not rebuild Core snapshots or GPU resources; only a real document-area geometry change may flow through the existing renderer resize API. Full rationale, theme definitions, dependency policy, accessibility rules, and docking direction are recorded in [UI architecture](./ui-architecture.md).
+The visible foundation is a professional workspace shell, not final editor feature UI. It uses a top application bar, neutral tool-options row, stable tool-strip panel, document tab and renderer viewport, registered inspector panels (`layers`, `properties`, `color`), and a status bar. The panels are intentionally lightweight placeholders: they do not mirror document state or implement editing behavior.
+
+Workspace layout remains a separate, versioned UI model. The `professional-shell` preset registers stable UI-only IDs (`application-menu`, `tool-options`, `tool-strip`, `layers`, `properties`, `color`, and `status`) so future docking/persistence can evolve without serializing React components. It is independent from the native project format.
+
+The document viewport owns a `ResizeObserver` in the UI composition layer. It reports logical CSS dimensions to the existing renderer `resize` API; the renderer preserves zoom/pan and maps DPR to physical pixels. Theme switches and normal React renders reuse the current renderer instance, render plan, and backend resources. Only real viewport geometry changes request a resize, so workspace presentation never becomes a second rendering implementation. Full rationale, theme definitions, dependency policy, accessibility rules, and docking direction are recorded in [UI architecture](./ui-architecture.md).
 
 ## Rendering boundary
 

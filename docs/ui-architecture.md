@@ -1,5 +1,13 @@
 # UI Architecture
 
+## Professional workspace shell
+
+The current visible UI is a professional shell built from the foundation primitives, not a visual editor implementation. It is composed from a top application bar, tool-options row, persistent tool strip, document tab, renderer-owned canvas viewport, inspector panel stack, and bottom status bar. `Layers`, `Properties`, and `Color` are registered panel shells with stable IDs and explicit placeholders; none duplicates Core state or commands.
+
+The default **Soft** theme remains modular and uses elevation, gap, and radius tokens. **Flat** preserves the exact component and layout contracts while resolving those same semantic tokens with zero gap/radius/blur. A theme control changes token values only; it must not recreate a Core or Renderer instance.
+
+The UI observes the real document viewport’s CSS geometry and forwards only normalized logical dimensions to the renderer. DPR conversion, rendering, invalidation, and resource ownership remain in `src/renderer`. Future docking may use the existing versioned workspace model and registry; panel drag, docking commits, and panel business functionality are intentionally out of scope.
+
 ## Ownership and design-system strategy
 
 The UI has a one-way dependency chain:
