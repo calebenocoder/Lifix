@@ -1,9 +1,9 @@
-import { RenameLayerCommand, SetBlendModeCommand, SetGroupCompositingModeCommand, SetOpacityCommand, SetTransformCommand, SetVisibilityCommand, type Document, type EditorCommand, type Layer, type LayerId } from "../../core";
+import { clonePixelSelection, RenameLayerCommand, SetBlendModeCommand, SetGroupCompositingModeCommand, SetOpacityCommand, SetTransformCommand, SetVisibilityCommand, type Document, type EditorCommand, type Layer, type LayerId, type PixelSelection } from "../../core";
 import type { EditorActionResult, EditorColor, EditorDocumentView, EditorLayerView, EditorSessionAction, EditorSessionSnapshot } from "./model";
 import { toolIds, type EditorInteractionPreview, type ToolId } from "./tool-state";
 
 export type EditorSessionListener = (snapshot: EditorSessionSnapshot) => void;
-export type DocumentChangeListener = (document: Document) => void;
+export type DocumentChangeListener = (document: Document, change: { readonly affectsImageRendering: boolean }) => void;
 
 function cloneColor(color: EditorColor): EditorColor { return { ...color }; }
 function validColor(color: EditorColor): boolean { return [color.r, color.g, color.b].every(value => Number.isInteger(value) && value >= 0 && value <= 255); }
@@ -42,13 +42,14 @@ function findLayer(nodes: readonly EditorLayerView[], selectedLayerId: LayerId |
   return undefined;
 }
 
-function createSnapshot(document: EditorDocumentView, selectedLayerId: LayerId | null, expandedGroupIds: ReadonlySet<LayerId>, foregroundColor: EditorColor, backgroundColor: EditorColor, documentRevision: number, sessionRevision: number, activeToolId: ToolId, interactionActive: boolean): EditorSessionSnapshot {
+function createSnapshot(document: EditorDocumentView, selectedLayerId: LayerId | null, pixelSelection: PixelSelection | null, expandedGroupIds: ReadonlySet<LayerId>, foregroundColor: EditorColor, backgroundColor: EditorColor, documentRevision: number, sessionRevision: number, activeToolId: ToolId, interactionActive: boolean): EditorSessionSnapshot {
   return {
     documentRevision,
     sessionRevision,
     document,
     selectedLayerId,
     selectedLayer: findLayer(document.layers, selectedLayerId),
+    pixelSelection: clonePixelSelection(pixelSelection),
     expandedGroupIds: [...expandedGroupIds],
     foregroundColor: cloneColor(foregroundColor),
     backgroundColor: cloneColor(backgroundColor),
@@ -58,7 +59,7 @@ function createSnapshot(document: EditorDocumentView, selectedLayerId: LayerId |
 }
 
 export function projectEditorSnapshot(document: Document, selectedLayerId: LayerId | null, expandedGroupIds: ReadonlySet<LayerId>, foregroundColor: EditorColor, backgroundColor: EditorColor, documentRevision: number, sessionRevision: number, activeToolId: ToolId = "move", interactionActive = false): EditorSessionSnapshot {
-  return createSnapshot(projectDocument(document, expandedGroupIds), selectedLayerId, expandedGroupIds, foregroundColor, backgroundColor, documentRevision, sessionRevision, activeToolId, interactionActive);
+  return createSnapshot(projectDocument(document, expandedGroupIds), selectedLayerId, document.pixelSelection, expandedGroupIds, foregroundColor, backgroundColor, documentRevision, sessionRevision, activeToolId, interactionActive);
 }
 
 export class EditorSessionController {
@@ -117,8 +118,9 @@ export class EditorSessionController {
       command.execute(this.#document);
       this.#documentRevision += 1;
       this.#reconcileSessionState();
-      this.#publish(true);
-      return this.#notifyDocumentChange();
+      const affectsImageRendering = command.affectsImageRendering !== false;
+      this.#publish(affectsImageRendering);
+      return this.#notifyDocumentChange(affectsImageRendering);
     } catch (cause) {
       return { ok: false, error: cause instanceof Error ? cause.message : "Editor operation failed" };
     }
@@ -134,7 +136,7 @@ export class EditorSessionController {
     this.#documentRevision += 1;
     this.#sessionRevision += 1;
     this.#publish(true);
-    return this.#notifyDocumentChange();
+    return this.#notifyDocumentChange(true);
   }
 
   beginInteractionPreview(preview: EditorInteractionPreview): void {
@@ -156,15 +158,15 @@ export class EditorSessionController {
     if (this.#selectedLayerId !== null && !this.#document.layerTree.find(this.#selectedLayerId)) this.#selectedLayerId = null;
     for (const id of this.#expandedGroupIds) if (this.#document.layerTree.find(id)?.kind !== "group") this.#expandedGroupIds.delete(id);
   }
-  #createSnapshot(): EditorSessionSnapshot { return createSnapshot(this.#documentView, this.#selectedLayerId, this.#expandedGroupIds, this.#foregroundColor, this.#backgroundColor, this.#documentRevision, this.#sessionRevision, this.#activeToolId, this.#interactionActive); }
+  #createSnapshot(): EditorSessionSnapshot { return createSnapshot(this.#documentView, this.#selectedLayerId, this.#document.pixelSelection, this.#expandedGroupIds, this.#foregroundColor, this.#backgroundColor, this.#documentRevision, this.#sessionRevision, this.#activeToolId, this.#interactionActive); }
   #publish(documentChanged: boolean): void {
     if (documentChanged) this.#documentView = projectDocument(this.#document, this.#expandedGroupIds);
     else if (this.#snapshot.expandedGroupIds.length !== this.#expandedGroupIds.size || this.#snapshot.expandedGroupIds.some(id => !this.#expandedGroupIds.has(id))) this.#documentView = projectDocument(this.#document, this.#expandedGroupIds);
     this.#snapshot = this.#createSnapshot();
     this.#listeners.forEach(listener => listener(this.#snapshot));
   }
-  #notifyDocumentChange(): EditorActionResult {
-    try { this.onDocumentChange(this.#document); return { ok: true }; }
+  #notifyDocumentChange(affectsImageRendering: boolean): EditorActionResult {
+    try { this.onDocumentChange(this.#document, { affectsImageRendering }); return { ok: true }; }
     catch (cause) { return { ok: true, warning: cause instanceof Error ? cause.message : "Document changed, but downstream synchronization failed" }; }
   }
 }

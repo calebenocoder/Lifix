@@ -65,7 +65,7 @@ authoritative Core Document
   -> Layers / Properties / Color panel presentation
 ```
 
-`EditorSessionController` is an application-layer adapter, not a second document engine. It keeps the mutable `Document` private, projects only UI-relevant scalar metadata, recursively clones transforms and layer hierarchy, and never copies raster pixel buffers. The Layers panel presents the conventional topmost-first view by reversing each Core sibling list during projection; Core and Renderer storage remain bottom-to-top.
+`EditorSessionController` is an application-layer adapter, not a second document engine. It keeps the mutable `Document` private, projects only UI-relevant scalar metadata and a detached pixel-selection value, recursively clones transforms and layer hierarchy, and never copies raster pixel buffers. The Layers panel presents the conventional topmost-first view by reversing each Core sibling list during projection; Core and Renderer storage remain bottom-to-top.
 
 Document actions follow the reverse command path:
 
@@ -83,13 +83,13 @@ Visibility, opacity, blend mode, name, transform, and group compositing therefor
 
 State ownership is explicit:
 
-- **Document state:** hierarchy, names, visibility, opacity, blend modes, transforms, and group compositing.
-- **Editor-session state:** one selected layer, expanded group IDs, and foreground/background RGB colors.
+- **Document state:** hierarchy, names, visibility, opacity, blend modes, transforms, group compositing, and the current document-space pixel selection.
+- **Editor-session state:** one selected layer (a UI/tool target), expanded group IDs, and foreground/background RGB colors.
 - **Workspace state:** theme, registered panels, splits, positions, and future docking data.
 
-Selection, group expansion, panel scrolling, and session colors publish UI snapshots only. They do not create `RenderInput`, invalidate the Renderer, or touch raster/GPU resources. Foreground/background colors are simple sRGB-like 8-bit editor working values for future tools; they are not serialized document color management.
+Layer targeting, group expansion, panel scrolling, and session colors publish UI snapshots only. They do not create `RenderInput`, invalidate the Renderer, or touch raster/GPU resources. Pixel selection is different: it is a Core document command and is serialized, but it remains renderer-neutral until a future operation explicitly consumes it. Its command publishes the detached selection projection without rebuilding layer projection, `RenderInput`, raster, or GPU resources. Foreground/background colors are simple sRGB-like 8-bit editor working values for future tools; they are not serialized document color management.
 
-The session caches its detached document projection. Selection and color changes publish a new session snapshot while reusing that projection; expansion changes rebuild the UI hierarchy but remain renderer-neutral. Document commands rebuild the projection and create exactly one downstream render-input notification. `replaceDocument` clears stale selection, resets expansion IDs against the replacement hierarchy, preserves session colors, and notifies the existing renderer integration without replacing workspace or theme state.
+The session caches its detached document projection. Layer targeting, pixel-selection, and color changes publish a new session snapshot while reusing that projection; expansion changes rebuild the UI hierarchy but remain renderer-neutral. Render-affecting document commands rebuild the projection and create exactly one downstream render-input notification; pixel-selection commands deliberately do neither. `replaceDocument` clears stale layer targeting, resets expansion IDs against the replacement hierarchy, preserves session colors, and notifies the existing renderer integration without replacing workspace or theme state.
 
 Theme switching is a workspace-only token change. It does not invalidate the renderer because the current document board and pixels are renderer-owned and theme-independent. Viewport resize remains the only workspace geometry signal sent to the renderer.
 
@@ -144,7 +144,9 @@ Modifier state is normalized to Shift, Alt/Option semantic modifier, Control, an
 
 `InteractionTransaction` defines begin, update, commit, and cancel semantics. Preview state is private session interaction state rather than a React subscription: pointer movement does not rebuild document projections, RenderInput, render plans, textures, or GPU resources. The overlay is an independent, requestAnimationFrame-coalesced DOM surface above the renderer canvas. It is not part of document pixels or raster compositing.
 
-Move preview metadata is renderer-owned (`layerId` plus document-space delta), while its parent-local candidate transform remains transient session interaction data. The renderer applies this metadata directly to the existing render plan during its normal coalesced frame; it does not receive a new RenderInput, rebuild GPU resources, or upload textures on pointer movement. On commit, the normal Core → RenderInput route replaces the preview without a visible position jump. Properties intentionally continue showing committed values during the drag and update only after the command succeeds. **Hand** and **Zoom** operate renderer viewport pan/zoom only, never Core document commands. **Brush** will use a specialized high-frequency stroke system rather than React state. **Text** will enter an explicit editable mode that suspends tool keyboard routing. Marquee, crop, shape, paths, masks, filters, and all final editing behaviors remain deferred.
+Move preview metadata is renderer-owned (`layerId` plus document-space delta), while its parent-local candidate transform remains transient session interaction data. The renderer applies this metadata directly to the existing render plan during its normal coalesced frame; it does not receive a new RenderInput, rebuild GPU resources, or upload textures on pointer movement. On commit, the normal Core → RenderInput route replaces the preview without a visible position jump. Properties intentionally continue showing committed values during the drag and update only after the command succeeds.
+
+**Marquee** uses the same transaction lifecycle but owns no raster or renderer preview. Pointer samples produce a requestAnimationFrame-coalesced DOM rectangle over the surface in document-to-viewport coordinates. Pointer-up replaces the normalized/clipped Core `PixelSelection` with one command; a click clears an existing selection. Its persistent outline is the same renderer-independent overlay, projected from Core state. Selection must never enter `RenderInput` or affect raster/GPU resources until a future Core operation (copy, fill, transform, filter, mask) explicitly consumes it. **Hand** and **Zoom** operate renderer viewport pan/zoom only, never Core document commands. **Brush** will use a specialized high-frequency stroke system rather than React state. **Text** will enter an explicit editable mode that suspends tool keyboard routing. Crop, shape, paths, masks, filters, and all final editing behaviors remain deferred.
 
 ## Docking and magnetic attachment
 

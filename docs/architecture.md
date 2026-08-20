@@ -2,7 +2,7 @@
 
 ## Core ownership
 
-`src/core` is the sole authoritative Editor Core during the web-first phase. It owns document state, layer hierarchy and invariants, commands, validation, and the versioned project format. The running React application dispatches its public Core API; React components do not own or implement domain rules.
+`src/core` is the sole authoritative Editor Core during the web-first phase. It owns document state, layer hierarchy and invariants, document-space pixel-selection geometry, commands, validation, and the versioned project format. The running React application dispatches its public Core API; React components do not own or implement domain rules.
 
 `crates/editor-core` is deliberately a native boundary without a parallel Document or LayerTree implementation. The prior partial Rust model duplicated TypeScript concepts but did not provide matching commands or serialization, creating a concrete drift risk. Rust remains part of the architecture for future native execution, but it must not grow a second mutable editor engine.
 
@@ -31,7 +31,7 @@ Workspace layout remains a separate, versioned UI model. The `professional-shell
 
 The document viewport owns a `ResizeObserver` in the UI composition layer. It reports logical CSS dimensions to the existing renderer `resize` API; the renderer preserves zoom/pan and maps DPR to physical pixels. Theme switches and normal React renders reuse the current renderer instance, render plan, and backend resources. Only real viewport geometry changes request a resize, so workspace presentation never becomes a second rendering implementation. Full rationale, theme definitions, dependency policy, accessibility rules, and docking direction are recorded in [UI architecture](./ui-architecture.md).
 
-Core-backed panels consume detached `EditorSessionSnapshot` values projected by a non-React application adapter. Panels dispatch typed session actions; document-changing actions are translated to Core commands before a new renderer snapshot is created. Selected layer, collapsed groups, and foreground/background colors are editor-session state, while theme/panel layout remains workspace state. Neither domain is serialized into the image document. Non-document session actions never notify the Renderer.
+Core-backed panels consume detached `EditorSessionSnapshot` values projected by a non-React application adapter. Panels dispatch typed session actions; render-affecting document actions are translated to Core commands before a new renderer snapshot is created. Selected layer, collapsed groups, and foreground/background colors are editor-session state, while theme/panel layout remains workspace state. The selected layer is only a UI/tool target and is never serialized. In contrast, the Core-owned document pixel selection is serializable operation state but remains renderer-neutral until a future operation consumes it. Non-document session actions never notify the Renderer.
 
 ## Rendering boundary
 
@@ -87,10 +87,12 @@ The renderer canvas remains the document-pixel surface. `src/ui/tools` owns the 
 
 Move previews are renderer-owned metadata (`layerId` plus document-space delta) applied to the existing immutable render plan during a coalesced frame. They neither rebuild the plan/input nor mutate Core state, upload raster data, or serialize. A selected group preview translates its rendered descendants together; the final Core transform changes only the group transform. For nested selected layers, the tool inverts the composed parent affine transform before committing local `x/y`; non-invertible parents refuse the interaction safely. Layers can remain off-canvas and coordinates retain fractional values.
 
+Marquee is the first Core-backed pixel-operation tool. Its current `PixelSelection` variant is a normalized rectangle in document coordinates over the half-open geometric domain `[0, width] × [0, height]`; raster sample indices remain a separate future concern. A drag shows only a transient DOM overlay and commits exactly one `SetPixelSelectionCommand` on pointer-up. The command clips the rectangle to document bounds; a click or wholly outside drag clears an existing selection through `ClearPixelSelectionCommand`. Escape, `pointercancel`, tool changes, and document replacement discard only transient geometry. The committed outline is an overlay derived from the detached session projection: it is neither raster data nor `RenderInput`, so selection-only commands do not rebuild render plans, textures, or GPU resources. Future selection variants may use coverage masks or tiled representations behind the same Core boundary.
+
 ## Runtime foundation
 
 `createEditorCore` owns the minimal core lifecycle and is consumed through its public API by the composition root in the React UI. `createRenderer` probes WebGPU behind the renderer boundary; it reports `unavailable` instead of failing when a browser or webview does not provide a GPU adapter. `createPlatformRuntime` is the only frontend runtime detector and returns a neutral `web` or `tauri` result to the UI.
 
 ## Native project data
 
-The Core serializes document structure through a versioned native project representation. It persists document and layer metadata, hierarchy, transforms, and raster *references* only. Future tiled pixel payloads, lazy sources, and GPU caches remain outside this structural representation and will be resolved by dedicated storage adapters rather than the document model.
+The Core serializes document structure through a versioned native project representation. It persists document and layer metadata, hierarchy, transforms, raster *references*, and the current rectangular pixel-selection geometry only. The selection field is optional when reading existing v1 data, where an omitted value means no selection. Future tiled pixel payloads, lazy sources, GPU caches, and selection coverage payloads remain outside this structural representation and will be resolved by dedicated storage adapters rather than the document model.

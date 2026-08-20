@@ -1,15 +1,17 @@
 import { createGroupLayer, createRasterLayer, type BlendMode, type Document, type GroupCompositingMode, type GroupLayerOptions, type LayerId, type LayerOptions, type LayerTreeState, type RasterDataReference, type Transform } from "./document";
+import { clonePixelSelection, setPixelSelection, type PixelSelection } from "./selection";
 
 /** Commands define the future undoable state transition boundary. */
-export interface EditorCommand<State> { readonly label: string; execute(state: State): State; undo(state: State): State; }
+export interface EditorCommand<State> { readonly label: string; /** Selection-only commands can update editor projections without rebuilding image render input. */ readonly affectsImageRendering?: boolean; execute(state: State): State; undo(state: State): State; }
 export interface History<State> { readonly canUndo: boolean; readonly canRedo: boolean; execute(command: EditorCommand<State>): void; undo(): void; redo(): void; }
 export interface Tool { readonly id: string; readonly label: string; }
 
 abstract class DocumentCommand implements EditorCommand<Document> {
-  #previous?: LayerTreeState;
+  #previous?: { readonly layerTree: LayerTreeState; readonly pixelSelection: PixelSelection | null };
   abstract readonly label: string;
-  execute(document: Document): Document { this.#previous = document.layerTree.snapshot(); this.apply(document); return document; }
-  undo(document: Document): Document { if (!this.#previous) throw new Error("Command has not been executed"); document.layerTree.restore(this.#previous); return document; }
+  readonly affectsImageRendering: boolean = true;
+  execute(document: Document): Document { this.#previous = { layerTree: document.layerTree.snapshot(), pixelSelection: clonePixelSelection(document.pixelSelection) }; this.apply(document); return document; }
+  undo(document: Document): Document { if (!this.#previous) throw new Error("Command has not been executed"); document.layerTree.restore(this.#previous.layerTree); document.pixelSelection = clonePixelSelection(this.#previous.pixelSelection); return document; }
   protected abstract apply(document: Document): void;
   protected layer(document: Document, id: LayerId) { const layer = document.layerTree.find(id); if (!layer) throw new Error(`Unknown layer: ${id}`); return layer; }
 }
@@ -42,6 +44,17 @@ export class SetTransformCommand extends DocumentCommand {
       rotation: this.transform.rotation,
     };
   }
+}
+export class SetPixelSelectionCommand extends DocumentCommand {
+  readonly label = "Set pixel selection";
+  override readonly affectsImageRendering = false;
+  constructor(private readonly selection: PixelSelection) { super(); }
+  protected apply(document: Document): void { setPixelSelection(document, this.selection); }
+}
+export class ClearPixelSelectionCommand extends DocumentCommand {
+  readonly label = "Clear pixel selection";
+  override readonly affectsImageRendering = false;
+  protected apply(document: Document): void { setPixelSelection(document, null); }
 }
 export class MoveLayerCommand extends DocumentCommand { readonly label: string = "Move layer"; constructor(private readonly id: LayerId, private readonly parentId: LayerId | null, private readonly index?: number) { super(); } protected apply(document: Document): void { this.layer(document, this.id); document.layerTree.move(this.id, this.parentId, this.index); } }
 export class ReorderLayerCommand extends DocumentCommand { readonly label = "Reorder layer"; constructor(private readonly id: LayerId, private readonly index: number) { super(); } protected apply(document: Document): void { if (!Number.isInteger(this.index) || this.index < 0) throw new RangeError("Layer index must be a non-negative integer"); this.layer(document, this.id); document.layerTree.reorder(this.id, this.index); } }

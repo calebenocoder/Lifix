@@ -1,4 +1,5 @@
 import { createDocument, type BlendMode, type ColorInfo, type Document, type Layer, type LayerId, type LayerTreeState, type RasterDataReference, type Resolution, type Transform } from "./document";
+import { clonePixelSelection, setPixelSelection, type PixelSelection } from "./selection";
 
 /** Native project data v1. Pixel payloads deliberately live outside this structural format. */
 export const PROJECT_FORMAT_VERSION = 1 as const;
@@ -13,6 +14,8 @@ export interface SerializedProject {
     readonly color: ColorInfo;
     readonly metadata: Record<string, string>;
     readonly layerTree: LayerTreeState;
+    /** Geometric editor operation state; transient interaction previews are intentionally excluded. */
+    readonly pixelSelection: PixelSelection | null;
   };
 }
 
@@ -22,7 +25,7 @@ export function serializeDocument(document: Document): SerializedProject {
     document: {
       id: document.id, name: document.name, width: document.width, height: document.height,
       resolution: { ...document.resolution }, color: { ...document.color }, metadata: { ...document.metadata },
-      layerTree: document.layerTree.snapshot(),
+      layerTree: document.layerTree.snapshot(), pixelSelection: clonePixelSelection(document.pixelSelection),
     },
   };
 }
@@ -39,8 +42,10 @@ export function deserializeProject(input: unknown): Document {
   const color = validateColor(source.color);
   const metadata = validateMetadata(source.metadata);
   const tree = validateLayerTree(source.layerTree);
+  const pixelSelection = source.pixelSelection === undefined ? null : validatePixelSelection(source.pixelSelection, width, height);
   const document = createDocument(id, name, width, height, { resolution, color, metadata });
   document.layerTree.restore(tree);
+  setPixelSelection(document, pixelSelection);
   return document;
 }
 
@@ -50,6 +55,16 @@ function positiveNumber(value: unknown, label: string): number { if (typeof valu
 function validateResolution(value: unknown): Resolution { const result = asObject(value, "Resolution is required"); if (result.unit !== "ppi") throw new Error("Resolution unit must be ppi"); return { x: positiveNumber(result.x, "Resolution x"), y: positiveNumber(result.y, "Resolution y"), unit: "ppi" }; }
 function validateColor(value: unknown): ColorInfo { const result = asObject(value, "Color information is required"); if (result.model !== "rgb" || result.profile !== "srgb" || (result.bitDepth !== 8 && result.bitDepth !== 16) || typeof result.alpha !== "boolean") throw new Error("Invalid color information"); return { model: "rgb", profile: "srgb", bitDepth: result.bitDepth, alpha: result.alpha }; }
 function validateMetadata(value: unknown): Record<string, string> { const result = asObject(value, "Document metadata is required"); for (const [key, item] of Object.entries(result)) { requiredString(key, "Metadata key"); if (typeof item !== "string") throw new Error("Metadata values must be strings"); } return { ...result } as Record<string, string>; }
+function validatePixelSelection(value: unknown, width: number, height: number): PixelSelection | null {
+  if (value === null) return null;
+  const source = asObject(value, "Pixel selection must be an object or null");
+  if (source.kind !== "rectangle") throw new Error("Unsupported pixel selection kind");
+  const coordinate = (item: unknown, label: string) => { if (typeof item !== "number" || !Number.isFinite(item)) throw new Error(`${label} must be finite`); return item; };
+  const selection: PixelSelection = { kind: "rectangle", left: coordinate(source.left, "Pixel selection left"), top: coordinate(source.top, "Pixel selection top"), right: coordinate(source.right, "Pixel selection right"), bottom: coordinate(source.bottom, "Pixel selection bottom") };
+  if (selection.left >= selection.right || selection.top >= selection.bottom) throw new Error("Pixel selection must have positive normalized bounds");
+  if (selection.left < 0 || selection.top < 0 || selection.right > width || selection.bottom > height) throw new Error("Pixel selection must be within document bounds");
+  return selection;
+}
 function validateLayerTree(value: unknown): LayerTreeState {
   const source = asObject(value, "Layer tree is required");
   if (!Array.isArray(source.rootLayerIds) || !source.rootLayerIds.every(id => typeof id === "string")) throw new Error("Root layer IDs must be a string array");

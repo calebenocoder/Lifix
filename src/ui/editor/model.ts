@@ -1,4 +1,4 @@
-import type { BlendMode, GroupCompositingMode, Layer, LayerId, Transform } from "../../core";
+import type { BlendMode, GroupCompositingMode, Layer, LayerId, PixelSelection, Transform } from "../../core";
 import type { ToolId } from "./tool-state";
 
 export interface EditorColor { readonly r: number; readonly g: number; readonly b: number; }
@@ -32,6 +32,8 @@ export interface EditorSessionSnapshot {
   readonly document: EditorDocumentView;
   readonly selectedLayerId: LayerId | null;
   readonly selectedLayer?: EditorLayerView;
+  /** Core-owned document-space operation region, distinct from selectedLayerId session targeting. */
+  readonly pixelSelection: PixelSelection | null;
   readonly expandedGroupIds: readonly LayerId[];
   readonly foregroundColor: EditorColor;
   readonly backgroundColor: EditorColor;

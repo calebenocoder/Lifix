@@ -42,6 +42,9 @@ button { color: inherit; }
 .renderer-surface { display: block; max-width: 100%; max-height: 100%; background: var(--ui-background-canvas); }
 .editor-interaction-overlay { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .interaction-overlay__marker { position: absolute; min-width: 8px; min-height: 8px; border: 1px solid var(--ui-interaction-focus); border-radius: var(--ui-radius-small); background: color-mix(in srgb, var(--ui-interaction-selected) 22%, transparent); box-shadow: 0 0 0 1px var(--ui-background-canvas); }
+.selection-overlay__committed, .selection-overlay__preview { position: absolute; box-sizing: border-box; pointer-events: none; min-width: 1px; min-height: 1px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-background-canvas) 78%, transparent); }
+.selection-overlay__committed { border: 1px dashed var(--ui-interaction-focus); }
+.selection-overlay__preview { border: 1px solid var(--ui-interaction-selected); background: color-mix(in srgb, var(--ui-interaction-selected) 10%, transparent); }
 .viewport-corner-label { position: absolute; right: var(--ui-space-100); bottom: var(--ui-space-100); padding: var(--ui-space-025) var(--ui-space-050); border: 1px solid var(--ui-border-subtle); border-radius: var(--ui-radius-small); background: var(--ui-surface-panelFloating); color: var(--ui-text-secondary); font-family: var(--ui-font-mono); font-size: var(--ui-font-size-small); pointer-events: none; }
 
 .inspector-stack { display: grid; grid-template-rows: var(--ui-panel-headerHeight) minmax(0, 1fr); height: 100%; border-radius: var(--ui-radius-panel); -webkit-backdrop-filter: blur(var(--ui-blur-panel)); backdrop-filter: blur(var(--ui-blur-panel)); }

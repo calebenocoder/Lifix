@@ -1,4 +1,4 @@
-import { CreateGroupCommand, CreateRasterLayerCommand, DeleteLayerCommand, RenameLayerCommand, SetTransformCommand, createDocument } from "../src/core";
+import { CreateGroupCommand, CreateRasterLayerCommand, DeleteLayerCommand, RenameLayerCommand, SetPixelSelectionCommand, SetTransformCommand, createDocument, createRectangularPixelSelection } from "../src/core";
 import { createViewport, type RenderLayerTransformPreview } from "../src/renderer";
 import { createEditorSession } from "../src/ui/editor";
 import { clientToDocument, clientToViewport, InteractionTransaction, isEditableTarget, modifiersFromEvent, toolRegistry, ToolInputRouter, ToolRegistry, type InteractionOverlay, type PointerCaptureHost, type ToolDefinition } from "../src/ui/tools";
@@ -15,6 +15,18 @@ function fixture(select = false) {
   const overlay = { update: () => undefined, clear: () => undefined } as unknown as InteractionOverlay;
   const router = new ToolInputRouter({ registry: toolRegistry, overlay, getViewport: () => viewport, getSessionSnapshot: () => session.snapshot, beginPreview: preview => session.beginInteractionPreview(preview), updatePreview: preview => session.updateInteractionPreview(preview), cancelPreview: () => session.cancelInteractionPreview(), completePreview: () => session.completeInteractionPreview(), setRendererTransformPreview: preview => previews.push(preview), executeDocumentCommand: command => session.executeDocumentCommand(command), onShortcutToolSelected: toolId => { session.dispatch({ type: "set-active-tool", toolId }); } });
   return { document, session, router, previews, documentChanges: () => documentChanges };
+}
+
+function marqueeFixture(nextViewport = createViewport(400, 300, 1, 1, 0, 0)) {
+  const document = createDocument("marquee", "Marquee", 100, 80); new CreateRasterLayerCommand("layer", "Layer").execute(document);
+  const changes: boolean[] = []; const session = createEditorSession(document, (_document, change) => { changes.push(change.affectsImageRendering); });
+  session.dispatch({ type: "select-layer", layerId: "layer" });
+  const overlay = { update: () => undefined, clear: () => undefined } as unknown as InteractionOverlay;
+  const router = new ToolInputRouter({ registry: toolRegistry, overlay, getViewport: () => nextViewport, getSessionSnapshot: () => session.snapshot, beginPreview: preview => session.beginInteractionPreview(preview), updatePreview: preview => session.updateInteractionPreview(preview), cancelPreview: () => session.cancelInteractionPreview(), completePreview: () => session.completeInteractionPreview(), executeDocumentCommand: command => session.executeDocumentCommand(command) }, "marquee");
+  const surface = { left: 10, top: 20, width: 200, height: 150 };
+  const capture: PointerCaptureHost & { readonly captured: number[]; readonly released: number[] } = { captured: [], released: [], getBoundingClientRect: () => surface, setPointerCapture(id) { this.captured.push(id); }, releasePointerCapture(id) { this.released.push(id); }, hasPointerCapture: () => true };
+  const atDocument = (pointerId: number, point: { readonly x: number; readonly y: number }) => pointer(pointerId, surface.left + (point.x * nextViewport.zoom + nextViewport.offsetX) * surface.width / nextViewport.width, surface.top + (point.y * nextViewport.zoom + nextViewport.offsetY) * surface.height / nextViewport.height);
+  return { document, session, router, capture, changes, atDocument };
 }
 
 describe("tool registry and session ownership", () => {
@@ -64,6 +76,63 @@ describe("Move tool", () => {
     const { document, session, router, documentChanges } = fixture(true); const capture = host(); router.pointerDown(pointer(), capture); router.pointerUp(pointer(), capture); expect(documentChanges()).toBe(0);
     router.pointerDown(pointer(2), capture); expect(router.keyDown({ key: "Escape", shiftKey: false, altKey: false, ctrlKey: false, metaKey: false, target: null })).toBe(true); expect(capture.released).toContain(2); router.pointerDown(pointer(3), capture); router.pointerCancel({ pointerId: 3 }); expect(capture.released).toContain(3); router.pointerDown(pointer(4), capture); router.setActiveTool("brush"); expect(capture.released).toContain(4); router.setActiveTool("move"); const stopReplacement = session.onDocumentWillReplace(() => router.documentReplaced()); router.pointerDown(pointer(5), capture); session.replaceDocument(createDocument("replacement", "Replacement", 100, 100)); stopReplacement(); expect(capture.released).toContain(5);
     const fresh = fixture(true); fresh.router.pointerDown(pointer(6), capture); fresh.session.executeDocumentCommand(new DeleteLayerCommand("layer")); fresh.router.pointerUp(pointer(6, 260, 170), capture); expect(fresh.documentChanges()).toBe(1); expect(fresh.session.interactionPreview).toBeUndefined(); expect(document.layerTree.find("layer")!.transform.position).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe("Rectangular Marquee tool", () => {
+  it("keeps drag geometry transient and commits one normalized document selection", () => {
+    const { document, session, router, capture, changes, atDocument } = marqueeFixture();
+    expect(router.pointerDown(atDocument(1, { x: 70, y: 55 }), capture)).toBe(true);
+    router.pointerMove(atDocument(1, { x: 10, y: 15 }), capture);
+    expect(session.interactionPreview).toMatchObject({ kind: "rectangular-marquee", start: { x: 70, y: 55 }, current: { x: 10, y: 15 } });
+    expect(document.pixelSelection).toBeNull();
+    router.pointerUp(atDocument(1, { x: 10, y: 15 }), capture);
+    expect(document.pixelSelection).toEqual({ kind: "rectangle", left: 10, top: 15, right: 70, bottom: 55 });
+    expect(session.snapshot.selectedLayerId).toBe("layer");
+    expect(session.snapshot.documentRevision).toBe(1);
+    expect(session.interactionPreview).toBeUndefined();
+    expect(changes).toEqual([false]);
+  });
+
+  it("uses document coordinates consistently across zoom, pan, and fractional DPR", () => {
+    for (const candidate of [createViewport(400, 300, 1, 1, 0, 0), createViewport(400, 300, 1.25, 2, 40, -30), createViewport(400, 300, 1.5, 0.5, -12.5, 19.25)]) {
+      const { document, router, capture, atDocument } = marqueeFixture(candidate);
+      router.pointerDown(atDocument(1, { x: 12.5, y: 10.25 }), capture);
+      router.pointerUp(atDocument(1, { x: 75.75, y: 62.5 }), capture);
+      expect(document.pixelSelection).toEqual({ kind: "rectangle", left: 12.5, top: 10.25, right: 75.75, bottom: 62.5 });
+    }
+  });
+
+  it("clips at document bounds, clears on click, and cancels without changing committed selection", () => {
+    const { document, session, router, capture, changes, atDocument } = marqueeFixture();
+    router.pointerDown(atDocument(1, { x: -20, y: 20 }), capture);
+    router.pointerUp(atDocument(1, { x: 40, y: 120 }), capture);
+    expect(document.pixelSelection).toEqual({ kind: "rectangle", left: 0, top: 20, right: 40, bottom: 80 });
+    router.pointerDown(atDocument(2, { x: 20, y: 20 }), capture);
+    expect(router.keyDown({ key: "Escape", shiftKey: false, altKey: false, ctrlKey: false, metaKey: false, target: null })).toBe(true);
+    expect(document.pixelSelection).toEqual({ kind: "rectangle", left: 0, top: 20, right: 40, bottom: 80 });
+    router.pointerDown(atDocument(3, { x: 10, y: 10 }), capture);
+    router.setActiveTool("move");
+    expect(document.pixelSelection).toEqual({ kind: "rectangle", left: 0, top: 20, right: 40, bottom: 80 });
+    router.setActiveTool("marquee");
+    router.pointerDown(atDocument(4, { x: 20, y: 20 }), capture);
+    router.pointerUp(atDocument(4, { x: 20, y: 20 }), capture);
+    expect(document.pixelSelection).toBeNull();
+    expect(changes).toEqual([false, false]);
+    expect(session.snapshot.selectedLayerId).toBe("layer");
+  });
+
+  it("cancels for document replacement and retains the replacement document selection", () => {
+    const { session, router, capture, atDocument } = marqueeFixture();
+    const replacement = createDocument("replacement", "Replacement", 100, 80);
+    new SetPixelSelectionCommand(createRectangularPixelSelection({ x: 2, y: 3 }, { x: 20, y: 30 })).execute(replacement);
+    const stop = session.onDocumentWillReplace(() => router.documentReplaced());
+    router.pointerDown(atDocument(1, { x: 10, y: 10 }), capture);
+    session.replaceDocument(replacement);
+    stop();
+    expect(capture.released).toEqual([1]);
+    expect(session.snapshot.pixelSelection).toEqual({ kind: "rectangle", left: 2, top: 3, right: 20, bottom: 30 });
+    expect(session.interactionPreview).toBeUndefined();
   });
 });
 

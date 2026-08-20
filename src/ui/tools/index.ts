@@ -1,6 +1,7 @@
 export * from "./contracts";
 export * from "./coordinates";
 export * from "./input-router";
+export * from "./marquee";
 export * from "./move";
 export * from "./overlay";
 export * from "./registry";

@@ -64,7 +64,8 @@ export function App() {
       renderer.fitDocument(input);
       await renderer.render(input);
       if (!active) return;
-      const editorSession = createEditorSession(document, changedDocument => {
+      const editorSession = createEditorSession(document, (changedDocument, change) => {
+        if (!change.affectsImageRendering) return;
         const nextInput = createRenderInput(changedDocument);
         void renderer.render(nextInput);
       });
@@ -84,7 +85,7 @@ export function App() {
       }, editorSession.snapshot.activeToolId);
       inputRouterRef.current = inputRouter;
       stopDocumentReplacement = editorSession.onDocumentWillReplace(() => inputRouter?.documentReplaced());
-      editorSession.subscribe(setEditor);
+      editorSession.subscribe(snapshot => { overlayRef.current?.setCommittedPixelSelection(snapshot.pixelSelection, renderer.viewport); setEditor(snapshot); });
 
       if (active) {
         const platform = createPlatformRuntime();
@@ -115,6 +116,7 @@ export function App() {
     if (!renderer) return;
     const viewport = renderer.viewport;
     renderer.resize(createViewport(width, height, window.devicePixelRatio || 1, viewport.zoom, viewport.offsetX, viewport.offsetY));
+    overlayRef.current?.setViewport(renderer.viewport);
   }, []);
 
   const dispatchEditorAction = useCallback((action: EditorSessionAction): EditorActionResult | void => {

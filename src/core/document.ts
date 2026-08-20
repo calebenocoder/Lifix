@@ -1,3 +1,5 @@
+import type { PixelSelection } from "./selection";
+
 /** Platform-independent, serializable document model. */
 export type DocumentId = string;
 export type LayerId = string;
@@ -13,7 +15,7 @@ export interface RasterLayer extends LayerBase { readonly kind: "raster"; readon
 export interface GroupLayer extends LayerBase { readonly kind: "group"; compositing: GroupCompositingMode; readonly childLayerIds: LayerId[]; }
 export type Layer = RasterLayer | GroupLayer;
 export interface LayerTreeState { readonly rootLayerIds: LayerId[]; readonly layers: Record<LayerId, Layer>; }
-export interface Document { readonly id: DocumentId; name: string; readonly width: number; readonly height: number; readonly resolution: Resolution; readonly color: ColorInfo; readonly layerTree: LayerTree; readonly metadata: Record<string, string>; }
+export interface Document { readonly id: DocumentId; name: string; readonly width: number; readonly height: number; readonly resolution: Resolution; readonly color: ColorInfo; readonly layerTree: LayerTree; readonly metadata: Record<string, string>; /** Authoritative document-space operation region; never layer/session targeting. */ pixelSelection: PixelSelection | null; }
 export interface LayerOptions { visible?: boolean; opacity?: number; blendMode?: BlendMode; transform?: Transform; }
 export interface GroupLayerOptions extends LayerOptions { compositing?: GroupCompositingMode; }
 export const identityTransform = (): Transform => ({ position: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0 });
@@ -39,4 +41,4 @@ export class LayerTree {
   #unregister(layer: Layer): void { delete this.layers[layer.id]; if (layer.kind === "group") layer.childLayerIds.forEach(id => { const child = this.find(id); if (child) this.#unregister(child); }); }
 }
 export interface DocumentOptions { resolution?: Resolution; color?: ColorInfo; metadata?: Record<string, string>; }
-export function createDocument(id: DocumentId, name: string, width: number, height: number, options: DocumentOptions = {}): Document { if (width <= 0 || height <= 0) throw new RangeError("Document dimensions must be positive"); return { id, name, width, height, resolution: options.resolution ?? { x: 72, y: 72, unit: "ppi" }, color: options.color ?? { model: "rgb", profile: "srgb", bitDepth: 8, alpha: true }, layerTree: new LayerTree(), metadata: { ...(options.metadata ?? {}) } }; }
+export function createDocument(id: DocumentId, name: string, width: number, height: number, options: DocumentOptions = {}): Document { if (width <= 0 || height <= 0) throw new RangeError("Document dimensions must be positive"); return { id, name, width, height, resolution: options.resolution ?? { x: 72, y: 72, unit: "ppi" }, color: options.color ?? { model: "rgb", profile: "srgb", bitDepth: 8, alpha: true }, layerTree: new LayerTree(), metadata: { ...(options.metadata ?? {}) }, pixelSelection: null }; }

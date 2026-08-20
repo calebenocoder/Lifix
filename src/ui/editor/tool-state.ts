@@ -23,5 +23,13 @@ export interface MoveLayerPreview {
   readonly documentDelta: InteractionPreviewPoint;
 }
 
-export type EditorInteractionPreview = DiagnosticPointerPreview | MoveLayerPreview;
+/** Pointer-only document-space marquee. It never enters Core or serialization. */
+export interface RectangularMarqueePreview {
+  readonly kind: "rectangular-marquee";
+  readonly toolId: "marquee";
+  readonly start: InteractionPreviewPoint;
+  readonly current: InteractionPreviewPoint;
+}
+
+export type EditorInteractionPreview = DiagnosticPointerPreview | MoveLayerPreview | RectangularMarqueePreview;
 import type { Transform } from "../../core";
