@@ -1,5 +1,6 @@
 import type { BlendMode, GroupCompositingMode, RasterDataReference, Transform } from "../core";
 import type { RasterResourceErrorCode } from "./raster-source";
+import type { AffineTransform } from "./transform";
 
 /** Immutable renderer-facing data. The renderer never receives a mutable Document. */
 export interface RenderInput { readonly documentId: string; readonly width: number; readonly height: number; readonly rootLayerIds: readonly string[]; readonly layers: Readonly<Record<string, RenderLayer>>; }
@@ -9,8 +10,8 @@ export interface RenderGroupLayer extends RenderLayerBase { readonly kind: "grou
 export type RenderLayer = RenderRasterLayer | RenderGroupLayer;
 /** Viewport state belongs to the renderer, never to a Document. */
 export interface RenderViewport { readonly width: number; readonly height: number; readonly devicePixelRatio: number; readonly zoom: number; readonly offsetX: number; readonly offsetY: number; }
-/** Renderer-owned, transient document-space translation for an active interaction. Never part of RenderInput or project data. */
-export interface RenderLayerTransformPreview { readonly layerId: string; readonly documentDelta: { readonly x: number; readonly y: number }; }
+/** Renderer-owned transient document-space transform. Never part of RenderInput or project data. */
+export interface RenderLayerTransformPreview { readonly layerId: string; readonly documentTransform: AffineTransform; }
 export interface PhysicalSurfaceSize { readonly width: number; readonly height: number; }
 export interface DirtyRegion { readonly x: number; readonly y: number; readonly width: number; readonly height: number; }
 export interface RenderOptions { readonly dirtyRegion?: DirtyRegion; }

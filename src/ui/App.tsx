@@ -4,7 +4,7 @@ import { createPlatformRuntime, type PlatformRuntime } from "../platform";
 import { createDiagnosticRasterSources, createRenderInput, createRenderer, createViewport, InMemoryRasterSourceResolver, type Renderer, type RendererStatus } from "../renderer";
 import { themeCssVariables, type ThemeId } from "./design-system";
 import { createEditorSession, type EditorActionResult, type EditorSessionAction, type EditorSessionController, type EditorSessionSnapshot } from "./editor";
-import { InteractionOverlay, ToolInputRouter, toolRegistry } from "./tools";
+import { InteractionOverlay, ToolInputRouter, resolveTransformTarget, toolRegistry } from "./tools";
 import { WorkspaceShell } from "./WorkspaceShell";
 
 interface DiagnosticState {
@@ -81,11 +81,16 @@ export function App() {
         completePreview: () => editorSession.completeInteractionPreview(),
         executeDocumentCommand: command => editorSession.executeDocumentCommand(command),
         setRendererTransformPreview: preview => renderer.setLayerTransformPreview(preview),
+        getTransformTarget: layerId => resolveTransformTarget(editorSession.snapshot, layerId, layer => {
+          if (!layer.raster) return undefined;
+          const source = diagnosticSources.resolve(layer.raster);
+          return source ? { x: 0, y: 0, width: source.width, height: source.height } : undefined;
+        }),
         onShortcutToolSelected: toolId => { editorSession.dispatch({ type: "set-active-tool", toolId }); },
       }, editorSession.snapshot.activeToolId);
       inputRouterRef.current = inputRouter;
       stopDocumentReplacement = editorSession.onDocumentWillReplace(() => inputRouter?.documentReplaced());
-      editorSession.subscribe(snapshot => { overlayRef.current?.setCommittedPixelSelection(snapshot.pixelSelection, renderer.viewport); setEditor(snapshot); });
+      editorSession.subscribe(snapshot => { overlayRef.current?.setCommittedPixelSelection(snapshot.pixelSelection, renderer.viewport); inputRouter?.sessionChanged(); setEditor(snapshot); });
 
       if (active) {
         const platform = createPlatformRuntime();
@@ -120,6 +125,7 @@ export function App() {
   }, []);
 
   const dispatchEditorAction = useCallback((action: EditorSessionAction): EditorActionResult | void => {
+    if (action.type === "select-layer") inputRouterRef.current?.cancelInteraction();
     const result = editorSessionRef.current?.dispatch(action);
     if (action.type === "set-active-tool" && result?.ok) inputRouterRef.current?.setActiveTool(action.toolId);
     return result;

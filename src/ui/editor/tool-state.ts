@@ -1,6 +1,6 @@
 /** Stable session-owned tool identities. They are not serialized with a Document. */
-export type ToolId = "move" | "marquee" | "brush" | "eraser" | "crop" | "text" | "shape" | "hand" | "zoom";
-export const toolIds: readonly ToolId[] = ["move", "marquee", "brush", "eraser", "crop", "text", "shape", "hand", "zoom"];
+export type ToolId = "move" | "transform" | "marquee" | "brush" | "eraser" | "crop" | "text" | "shape" | "hand" | "zoom";
+export const toolIds: readonly ToolId[] = ["move", "transform", "marquee", "brush", "eraser", "crop", "text", "shape", "hand", "zoom"];
 
 export interface InteractionPreviewPoint { readonly x: number; readonly y: number; }
 
@@ -31,5 +31,12 @@ export interface RectangularMarqueePreview {
   readonly current: InteractionPreviewPoint;
 }
 
-export type EditorInteractionPreview = DiagnosticPointerPreview | MoveLayerPreview | RectangularMarqueePreview;
+export interface TransformLayerPreview {
+  readonly kind: "transform-layer";
+  readonly toolId: "transform";
+  readonly layerId: string;
+  readonly transform: Transform;
+}
+
+export type EditorInteractionPreview = DiagnosticPointerPreview | MoveLayerPreview | RectangularMarqueePreview | TransformLayerPreview;
 import type { Transform } from "../../core";

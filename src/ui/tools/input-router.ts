@@ -6,6 +6,7 @@ import type { ModifierState, ToolContext, ToolController, ToolKeyboardInput, Too
 import { InteractionOverlay } from "./overlay";
 import { ToolRegistry } from "./registry";
 import { InteractionTransaction } from "./transaction";
+import type { TransformTarget } from "./transform-engine";
 
 export interface PointerEventLike {
   readonly pointerId: number;
@@ -36,6 +37,7 @@ export interface ToolInputRouterDependencies {
   readonly executeDocumentCommand: (command: EditorCommand<Document>) => EditorActionResult;
   /** Renderer-only transient preview; no RenderInput is created for pointer samples. */
   readonly setRendererTransformPreview?: (preview?: RenderLayerTransformPreview) => void;
+  readonly getTransformTarget?: (layerId: string) => TransformTarget | undefined;
   /** Synchronizes a shortcut-driven controller change with session-owned active tool state. */
   readonly onShortcutToolSelected?: (toolId: ToolId) => void;
   readonly onError?: (error: ToolRuntimeError) => void;
@@ -75,6 +77,8 @@ export class ToolInputRouter {
       cancelPreview: () => { if (!this.#transaction.cancel()) { dependencies.cancelPreview(); dependencies.setRendererTransformPreview?.(); dependencies.overlay.clear(); } },
       completePreview: () => { this.#transaction.commit(); },
       setRendererTransformPreview: preview => dependencies.setRendererTransformPreview?.(preview),
+      getTransformTarget: layerId => dependencies.getTransformTarget?.(layerId),
+      setTransformBox: box => dependencies.overlay.setTransformBox(box, dependencies.getViewport()),
       commit: command => { const result = dependencies.executeDocumentCommand(command); this.#transaction.commit(); return result; },
     };
     this.#controller.activate?.(this.#context);
@@ -122,6 +126,7 @@ export class ToolInputRouter {
   }
   keyUp(event: KeyboardEventLike): void { if (!this.#disposed && !isEditableTarget(event.target)) this.#invoke("keyboard", () => this.#controller.keyUp?.({ key: event.key, modifiers: modifiersFromEvent(event) }, this.#context)); }
   documentReplaced(): void { this.cancelInteraction(); }
+  sessionChanged(): void { if (this.#disposed) return; this.#invoke("activate", () => this.#controller.sessionChanged?.(this.#context)); if (this.#pointerId !== undefined && !this.#transaction.active) this.#releasePointerCapture(); }
   cancelInteraction(): void { if (this.#pointerId !== undefined) this.#invoke("pointer", () => this.#controller.pointerCancel?.(this.#context)); else this.#context.cancelPreview(); this.#releasePointerCapture(); }
   dispose(): void { if (this.#disposed) return; this.cancelInteraction(); this.#invoke("deactivate", () => this.#controller.deactivate?.(this.#context)); this.#invoke("dispose", () => this.#controller.dispose?.()); this.#disposed = true; }
   #pointer(event: PointerEventLike, host: PointerCaptureHost): ToolPointerInput {

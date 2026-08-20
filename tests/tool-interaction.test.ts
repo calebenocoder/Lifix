@@ -31,7 +31,7 @@ function marqueeFixture(nextViewport = createViewport(400, 300, 1, 1, 0, 0)) {
 
 describe("tool registry and session ownership", () => {
   it("provides unique stable tool definitions and session-only active selection", () => {
-    expect(toolRegistry.tools.map(tool => tool.id)).toEqual(["move", "marquee", "brush", "eraser", "crop", "text", "shape", "hand", "zoom"]);
+    expect(toolRegistry.tools.map(tool => tool.id)).toEqual(["move", "transform", "marquee", "brush", "eraser", "crop", "text", "shape", "hand", "zoom"]);
     expect(() => new ToolRegistry([toolRegistry.get("move"), toolRegistry.get("move")])).toThrow("Duplicate tool ID");
     const { session, documentChanges } = fixture(); session.dispatch({ type: "set-active-tool", toolId: "brush" });
     expect(session.snapshot.activeToolId).toBe("brush"); expect(session.snapshot.documentRevision).toBe(0); expect(documentChanges()).toBe(0);
@@ -54,7 +54,7 @@ describe("Move tool", () => {
     const { document, session, router, previews, documentChanges } = fixture(true); const capture = host();
     expect(router.pointerDown(pointer(), capture)).toBe(true); router.pointerMove(pointer(1, 310, 220), capture);
     expect(session.interactionPreview).toMatchObject({ kind: "move-layer", layerId: "layer", documentDelta: { x: 100, y: 50 }, transform: { position: { x: 100, y: 50 } } });
-    expect(document.layerTree.find("layer")!.transform.position).toEqual({ x: 0, y: 0 }); expect(session.snapshot.selectedLayer!.transform.position).toEqual({ x: 0, y: 0 }); expect(documentChanges()).toBe(0); expect(previews).toEqual([{ layerId: "layer", documentDelta: { x: 0, y: 0 } }, { layerId: "layer", documentDelta: { x: 100, y: 50 } }]);
+    expect(document.layerTree.find("layer")!.transform.position).toEqual({ x: 0, y: 0 }); expect(session.snapshot.selectedLayer!.transform.position).toEqual({ x: 0, y: 0 }); expect(documentChanges()).toBe(0); expect(previews).toEqual([{ layerId: "layer", documentTransform: { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 } }, { layerId: "layer", documentTransform: { a: 1, b: 0, c: 0, d: 1, e: 100, f: 50 } }]);
     router.pointerUp(pointer(1, 310, 220), capture);
     expect(capture.released).toEqual([1]); expect(document.layerTree.find("layer")!.transform.position).toEqual({ x: 100, y: 50 }); expect(documentChanges()).toBe(1); expect(session.snapshot.documentRevision).toBe(1); expect(session.interactionPreview).toBeUndefined(); expect(previews.at(-1)).toBeUndefined();
   });

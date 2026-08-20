@@ -2,6 +2,7 @@ import type { EditorCommand, Document } from "../../core";
 import type { RenderLayerTransformPreview, RenderViewport } from "../../renderer";
 import type { IconName } from "../icons";
 import type { EditorActionResult, EditorInteractionPreview, EditorSessionSnapshot, ToolId } from "../editor";
+import type { TransformBoxGeometry, TransformTarget } from "./transform-engine";
 
 export type ToolCursor = "default" | "move" | "crosshair" | "text" | "grab" | "grabbing" | "zoom-in" | "zoom-out";
 export interface ToolShortcut { readonly key: string; readonly shift?: boolean; }
@@ -29,11 +30,14 @@ export interface ToolContext {
   readonly cancelPreview: () => void;
   readonly completePreview: () => void;
   readonly setRendererTransformPreview: (preview?: RenderLayerTransformPreview) => void;
+  readonly getTransformTarget: (layerId: string) => TransformTarget | undefined;
+  readonly setTransformBox: (box?: TransformBoxGeometry) => void;
   readonly commit: (command: EditorCommand<Document>) => EditorActionResult;
 }
 
 export interface ToolController {
   activate?(context: ToolContext): void;
+  sessionChanged?(context: ToolContext): void;
   deactivate?(context: ToolContext): void;
   pointerDown?(input: ToolPointerInput, context: ToolContext): boolean | void;
   pointerMove?(input: ToolPointerInput, context: ToolContext): void;

@@ -1,4 +1,4 @@
-import type { BlendMode, GroupCompositingMode, Layer, LayerId, PixelSelection, Transform } from "../../core";
+import type { BlendMode, GroupCompositingMode, Layer, LayerId, PixelSelection, RasterDataReference, Transform } from "../../core";
 import type { ToolId } from "./tool-state";
 
 export interface EditorColor { readonly r: number; readonly g: number; readonly b: number; }
@@ -13,6 +13,7 @@ export interface EditorLayerView {
   readonly transform: Transform;
   readonly parentId: LayerId | null;
   readonly compositing?: GroupCompositingMode;
+  readonly raster?: RasterDataReference;
   readonly expanded: boolean;
   readonly children: readonly EditorLayerView[];
 }

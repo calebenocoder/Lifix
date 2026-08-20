@@ -1,5 +1,5 @@
 import { SetTransformCommand, type Transform } from "../../core";
-import { affineFromTransform, identityAffine, invertAffine, multiplyAffine, transformVector, type AffineTransform } from "../../renderer";
+import { affineFromTransform, identityAffine, invertAffine, multiplyAffine, transformVector, translationAffine, type AffineTransform } from "../../renderer";
 import type { EditorLayerView, EditorSessionSnapshot } from "../editor";
 import type { ToolContext, ToolController, ToolPointerInput } from "./contracts";
 
@@ -55,7 +55,7 @@ export function createMoveToolController(): ToolController {
     const transform: Transform = { position: { x: current.original.position.x + localDelta.x, y: current.original.position.y + localDelta.y }, scale: { ...current.original.scale }, rotation: current.original.rotation };
     if (!finiteTransform(transform)) { cancel(context); return undefined; }
     context.updatePreview({ kind: "move-layer", toolId: "move", layerId: current.layerId, start: current.start, current: input.document, transform, documentDelta });
-    context.setRendererTransformPreview({ layerId: current.layerId, documentDelta });
+    context.setRendererTransformPreview({ layerId: current.layerId, documentTransform: translationAffine(documentDelta.x, documentDelta.y) });
     return transform;
   };
   return {
@@ -71,7 +71,7 @@ export function createMoveToolController(): ToolController {
       if (!parentInverse) return false;
       state = { layerId: target.id, original: cloneTransform(target.transform), start: input.document, parentInverse, documentRevision: snapshot.documentRevision };
       context.beginPreview({ kind: "move-layer", toolId: "move", layerId: target.id, start: input.document, current: input.document, transform: state.original, documentDelta: { x: 0, y: 0 } });
-      context.setRendererTransformPreview({ layerId: target.id, documentDelta: { x: 0, y: 0 } });
+      context.setRendererTransformPreview({ layerId: target.id, documentTransform: identityAffine() });
       return true;
     },
     pointerMove(input, context) { update(input, context); },

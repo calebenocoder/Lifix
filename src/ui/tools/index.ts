@@ -6,3 +6,5 @@ export * from "./move";
 export * from "./overlay";
 export * from "./registry";
 export * from "./transaction";
+export * from "./transform";
+export * from "./transform-engine";

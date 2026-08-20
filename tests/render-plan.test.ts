@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDocument, createGroupLayer, createRasterLayer } from "../src/core";
-import { calculateRenderNodeBounds, createRenderInput, createRenderPlan, createSolidRasterSource, InMemoryRasterSourceResolver, invertAffine, previewedNodeTransform, RasterResourceCache, transformPoint, transformVector } from "../src/renderer";
+import { calculateRenderNodeBounds, createRenderInput, createRenderPlan, createSolidRasterSource, InMemoryRasterSourceResolver, invertAffine, previewedNodeTransform, RasterResourceCache, transformPoint, transformVector, translationAffine } from "../src/renderer";
 
 const raster = (id: string, options = {}) => createRasterLayer(id, id, options, { kind: "raster-reference", sourceId: id, storage: "lazy" });
 
@@ -37,7 +37,7 @@ describe("render plan", () => {
 
   it("applies a transient document-space preview to a target and group descendants without mutating the plan", () => {
     const document = createDocument("doc", "Document", 100, 100); document.layerTree.add(createGroupLayer("group", "Group", { transform: { position: { x: 10, y: 20 }, scale: { x: 2, y: 1 }, rotation: 0 } })); document.layerTree.add(raster("child", { transform: { position: { x: 3, y: 4 }, scale: { x: 1, y: 1 }, rotation: 0 } }), "group");
-    const plan = createRenderPlan(createRenderInput(document)); const group = plan.nodes[0]; const child = plan.layers[0]; const preview = { layerId: "group", documentDelta: { x: 17.5, y: -8.25 } };
+    const plan = createRenderPlan(createRenderInput(document)); const group = plan.nodes[0]; const child = plan.layers[0]; const preview = { layerId: "group", documentTransform: translationAffine(17.5, -8.25) };
     expect(previewedNodeTransform(group, preview)).toMatchObject({ e: 27.5, f: 11.75 }); expect(previewedNodeTransform(child, preview, true)).toMatchObject({ e: 33.5, f: 15.75 }); expect(child.transform).toMatchObject({ e: 16, f: 24 });
   });
 

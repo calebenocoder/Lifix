@@ -23,6 +23,7 @@ function projectLayer(layer: Layer, document: Document, expanded: ReadonlySet<La
     transform: cloneTransform(layer),
     parentId: layer.parentId,
     compositing: layer.kind === "group" ? layer.compositing : undefined,
+    raster: layer.kind === "raster" ? { ...layer.raster } : undefined,
     expanded: layer.kind === "group" && expanded.has(layer.id),
     children,
   };
