@@ -20,7 +20,7 @@ export class InteractionOverlay {
     if (!this.#element) return;
     const preview = this.#preview;
     const viewport = this.#viewport;
-    if (!preview || !viewport) { this.#element.replaceChildren(); return; }
+    if (!preview || !viewport || preview.kind !== "diagnostic-pointer") { this.#element.replaceChildren(); return; }
     const start = documentToViewport(preview.start, viewport);
     const current = documentToViewport(preview.current, viewport);
     const marker = this.#element.ownerDocument.createElement("div");

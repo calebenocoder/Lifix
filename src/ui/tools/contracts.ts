@@ -1,5 +1,5 @@
 import type { EditorCommand, Document } from "../../core";
-import type { RenderViewport } from "../../renderer";
+import type { RenderLayerTransformPreview, RenderViewport } from "../../renderer";
 import type { IconName } from "../icons";
 import type { EditorActionResult, EditorInteractionPreview, EditorSessionSnapshot, ToolId } from "../editor";
 
@@ -28,6 +28,7 @@ export interface ToolContext {
   readonly updatePreview: (preview: EditorInteractionPreview) => void;
   readonly cancelPreview: () => void;
   readonly completePreview: () => void;
+  readonly setRendererTransformPreview: (preview?: RenderLayerTransformPreview) => void;
   readonly commit: (command: EditorCommand<Document>) => EditorActionResult;
 }
 

@@ -126,7 +126,7 @@ DOM Pointer / keyboard event
 
 `ToolContext` is deliberately narrow: it supplies a detached session snapshot, renderer viewport read access, preview begin/update/finish functions, and the existing command boundary. It never provides a mutable Document, React state setter, DOM ownership, or GPU resource. Controllers have optional activate/deactivate, pointer, keyboard, and disposal callbacks; they may not bypass `executeDocumentCommand` for committed changes.
 
-The current Move registry entry is a deliberately harmless diagnostic controller, not a Move tool. It captures one pointer, records document-space start/current points, shows a temporary marker, and clears it on completion. It changes no layer transform, pixels, or Core document state. This proves the complete routing path without prematurely implementing editing behavior.
+Move is the first real editing controller. It currently targets only the selected visible layer (no canvas auto-selection); targeting eligibility is intentionally centralized for future layer locks. Pointer down records the original local transform and parent affine inverse. Pointer movement calculates a document-space delta, converts it to parent-local translation for the eventual transform, and sends a typed renderer preview. Pointer up executes exactly one `SetTransformCommand` through `executeDocumentCommand`; no-op movement creates no command. Escape, `pointercancel`, a tool switch, document replacement, a changed/deleted target, or a non-invertible parent cancel safely without mutation.
 
 ### Coordinates, input, and focus
 
@@ -144,7 +144,7 @@ Modifier state is normalized to Shift, Alt/Option semantic modifier, Control, an
 
 `InteractionTransaction` defines begin, update, commit, and cancel semantics. Preview state is private session interaction state rather than a React subscription: pointer movement does not rebuild document projections, RenderInput, render plans, textures, or GPU resources. The overlay is an independent, requestAnimationFrame-coalesced DOM surface above the renderer canvas. It is not part of document pixels or raster compositing.
 
-Future **Move** previews a layer transform and commits one Core transform command. **Hand** and **Zoom** operate renderer viewport pan/zoom only, never Core document commands. **Brush** will use a specialized high-frequency stroke system rather than React state. **Text** will enter an explicit editable mode that suspends tool keyboard routing. Marquee, crop, shape, paths, masks, filters, and all final editing behaviors remain deferred.
+Move preview metadata is renderer-owned (`layerId` plus document-space delta), while its parent-local candidate transform remains transient session interaction data. The renderer applies this metadata directly to the existing render plan during its normal coalesced frame; it does not receive a new RenderInput, rebuild GPU resources, or upload textures on pointer movement. On commit, the normal Core → RenderInput route replaces the preview without a visible position jump. Properties intentionally continue showing committed values during the drag and update only after the command succeeds. **Hand** and **Zoom** operate renderer viewport pan/zoom only, never Core document commands. **Brush** will use a specialized high-frequency stroke system rather than React state. **Text** will enter an explicit editable mode that suspends tool keyboard routing. Marquee, crop, shape, paths, masks, filters, and all final editing behaviors remain deferred.
 
 ## Docking and magnetic attachment
 

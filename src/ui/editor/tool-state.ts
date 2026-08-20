@@ -12,4 +12,16 @@ export interface DiagnosticPointerPreview {
   readonly current: InteractionPreviewPoint;
 }
 
-export type EditorInteractionPreview = DiagnosticPointerPreview;
+/** Session-owned, transient Move state. The committed document transform remains unchanged until pointer up. */
+export interface MoveLayerPreview {
+  readonly kind: "move-layer";
+  readonly toolId: "move";
+  readonly layerId: string;
+  readonly start: InteractionPreviewPoint;
+  readonly current: InteractionPreviewPoint;
+  readonly transform: Transform;
+  readonly documentDelta: InteractionPreviewPoint;
+}
+
+export type EditorInteractionPreview = DiagnosticPointerPreview | MoveLayerPreview;
+import type { Transform } from "../../core";

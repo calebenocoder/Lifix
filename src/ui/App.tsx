@@ -79,6 +79,7 @@ export function App() {
         cancelPreview: () => editorSession.cancelInteractionPreview(),
         completePreview: () => editorSession.completeInteractionPreview(),
         executeDocumentCommand: command => editorSession.executeDocumentCommand(command),
+        setRendererTransformPreview: preview => renderer.setLayerTransformPreview(preview),
         onShortcutToolSelected: toolId => { editorSession.dispatch({ type: "set-active-tool", toolId }); },
       }, editorSession.snapshot.activeToolId);
       inputRouterRef.current = inputRouter;

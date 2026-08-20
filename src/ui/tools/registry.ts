@@ -1,31 +1,11 @@
 import type { ToolController, ToolDefinition } from "./contracts";
 import type { ToolId } from "../editor";
-
-function createDiagnosticPointerController(): ToolController {
-  let active = false;
-  let start: { x: number; y: number } | undefined;
-  return {
-    pointerDown(input, context) {
-      active = true;
-      start = input.document;
-      context.beginPreview({ kind: "diagnostic-pointer", toolId: context.getSessionSnapshot().activeToolId, start, current: input.document });
-      return true;
-    },
-    pointerMove(input, context) {
-      if (!active || !start) return;
-      context.updatePreview({ kind: "diagnostic-pointer", toolId: context.getSessionSnapshot().activeToolId, start, current: input.document });
-    },
-    pointerUp(_input, context) { if (!active) return; active = false; start = undefined; context.completePreview(); },
-    pointerCancel(context) { active = false; start = undefined; context.cancelPreview(); },
-    keyDown(input, context) { if (input.key === "Escape" && active) { active = false; start = undefined; context.cancelPreview(); return true; } },
-    deactivate(context) { if (active) { active = false; start = undefined; context.cancelPreview(); } },
-  };
-}
+import { createMoveToolController } from "./move";
 
 function createPlaceholderController(): ToolController { return {}; }
 
 const definitions: readonly ToolDefinition[] = [
-  { id: "move", label: "Move", icon: "pointer", cursor: "move", shortcut: { key: "v" }, createController: createDiagnosticPointerController },
+  { id: "move", label: "Move", icon: "pointer", cursor: "move", shortcut: { key: "v" }, createController: createMoveToolController },
   { id: "marquee", label: "Marquee", icon: "marquee", cursor: "crosshair", shortcut: { key: "m" }, createController: createPlaceholderController },
   { id: "brush", label: "Brush", icon: "brush", cursor: "crosshair", shortcut: { key: "b" }, createController: createPlaceholderController },
   { id: "eraser", label: "Eraser", icon: "eraser", cursor: "crosshair", shortcut: { key: "e" }, createController: createPlaceholderController },

@@ -96,4 +96,13 @@ describe("renderer foundation", () => {
     expect(operations).toEqual([{ drawable: "blue", alpha: 1, transform: [2, 0, 0, 3, 4, 5], size: [10, 10] }, { drawable: "red", alpha: 0.4, transform: [1, 0, 0, 1, 0, 0], size: [10, 10] }]);
     document.layerTree.find("red")!.visible = false; await renderer.render(createRenderInput(document)); frames.run(); expect(operations).toHaveLength(3);
   });
+
+  it("renders a transient transform preview from the current plan without recreating raster resources", async () => {
+    const frames = scheduler(); const transforms: number[][] = []; let created = 0; let alpha = 1;
+    const context = { canvas: undefined as unknown as HTMLCanvasElement, save() {}, restore() {}, beginPath() {}, rect() {}, clip() {}, strokeRect() {}, fillRect() {}, set lineWidth(_value: number) {}, set strokeStyle(_value: string) {}, set fillStyle(_value: string) {}, set imageSmoothingEnabled(_value: boolean) {}, set globalAlpha(value: number) { alpha = value; }, setTransform(...value: number[]) { transforms.push(value); }, drawImage() { expect(alpha).toBe(1); } };
+    const canvas = { width: 0, height: 0, style: {}, getContext: (kind: string) => kind === "2d" ? context : null } as unknown as HTMLCanvasElement; context.canvas = canvas;
+    const resolver = new InMemoryRasterSourceResolver([createSolidRasterSource("source", 4, 4, [0, 0, 0, 255])]); const document = createDocument("doc", "Document", 100, 100); document.layerTree.add(createRasterLayer("layer", "Layer", { transform: { position: { x: 3, y: 4 }, scale: { x: 1, y: 1 }, rotation: 0 } }, { kind: "raster-reference", sourceId: "source", storage: "lazy" }));
+    const renderer = createRenderer({ scheduler: frames.scheduler, rasterSources: resolver, canvasRasterFactory: () => { created += 1; return {} as CanvasImageSource; } }); renderer.attach(canvas); renderer.resize(createViewport(100, 100)); await renderer.initialize(); await renderer.render(createRenderInput(document)); frames.run(); renderer.setLayerTransformPreview({ layerId: "layer", documentDelta: { x: 9, y: -2 } }); renderer.setLayerTransformPreview({ layerId: "layer", documentDelta: { x: 12, y: 5 } }); frames.run();
+    expect(created).toBe(1); expect(transforms.at(-1)).toEqual([1, 0, 0, 1, 15, 9]); renderer.dispose();
+  });
 });

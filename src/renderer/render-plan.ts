@@ -1,6 +1,6 @@
 import type { BlendMode, GroupCompositingMode } from "../core";
-import type { RenderInput, RenderLayer } from "./contracts";
-import { affineFromTransform, identityAffine, multiplyAffine, transformPoint, type AffineTransform } from "./transform";
+import type { RenderInput, RenderLayer, RenderLayerTransformPreview } from "./contracts";
+import { affineFromTransform, identityAffine, multiplyAffine, transformPoint, translationAffine, type AffineTransform } from "./transform";
 
 export interface RenderPlanRaster { readonly kind: "raster"; readonly layerId: string; readonly raster: Extract<RenderLayer, { readonly kind: "raster" }>["raster"]; readonly opacity: number; readonly blendMode: BlendMode; readonly transform: AffineTransform; }
 export interface RenderPlanGroup { readonly kind: "group"; readonly layerId: string; readonly requestedMode: GroupCompositingMode; readonly mode: GroupCompositingMode; readonly opacity: number; readonly blendMode: BlendMode; readonly transform: AffineTransform; readonly children: readonly RenderPlanNode[]; }
@@ -31,4 +31,13 @@ export function transformedRasterBounds(transform: AffineTransform, size: Render
   return [x, y, width, height].every(Number.isFinite) && width >= 0 && height >= 0 ? { x, y, width, height } : undefined;
 }
 export function unionRenderBounds(bounds: readonly (RenderBounds | undefined)[]): RenderBounds | undefined { const present = bounds.filter((value): value is RenderBounds => value !== undefined); if (!present.length) return undefined; const x = Math.min(...present.map(value => value.x)); const y = Math.min(...present.map(value => value.y)); const right = Math.max(...present.map(value => value.x + value.width)); const bottom = Math.max(...present.map(value => value.y + value.height)); const width = right - x; const height = bottom - y; return [x, y, width, height].every(Number.isFinite) && width >= 0 && height >= 0 ? { x, y, width, height } : undefined; }
-export function calculateRenderNodeBounds(node: RenderPlanNode, sizeOf: (layer: RenderPlanRaster) => RenderableSize | undefined): RenderBounds | undefined { if (node.kind === "raster") { const size = sizeOf(node); return size ? transformedRasterBounds(node.transform, size) : undefined; } return unionRenderBounds(node.children.map(child => calculateRenderNodeBounds(child, sizeOf))); }
+/** A preview target moves as one document-space unit; targeting a group also moves all descendants. */
+export function previewAffectsNode(node: RenderPlanNode, preview: RenderLayerTransformPreview | undefined, inherited = false): boolean { return inherited || Boolean(preview && node.layerId === preview.layerId); }
+export function previewedNodeTransform(node: RenderPlanNode, preview: RenderLayerTransformPreview | undefined, inherited = false): AffineTransform {
+  return previewAffectsNode(node, preview, inherited) && preview ? multiplyAffine(translationAffine(preview.documentDelta.x, preview.documentDelta.y), node.transform) : node.transform;
+}
+export function calculateRenderNodeBounds(node: RenderPlanNode, sizeOf: (layer: RenderPlanRaster) => RenderableSize | undefined, preview?: RenderLayerTransformPreview, inheritedPreview = false): RenderBounds | undefined {
+  const affected = previewAffectsNode(node, preview, inheritedPreview);
+  if (node.kind === "raster") { const size = sizeOf(node); return size ? transformedRasterBounds(previewedNodeTransform(node, preview, inheritedPreview), size) : undefined; }
+  return unionRenderBounds(node.children.map(child => calculateRenderNodeBounds(child, sizeOf, preview, affected)));
+}

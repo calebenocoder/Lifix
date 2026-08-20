@@ -1,5 +1,5 @@
 import type { Document, EditorCommand } from "../../core";
-import type { RenderViewport } from "../../renderer";
+import type { RenderLayerTransformPreview, RenderViewport } from "../../renderer";
 import type { EditorActionResult, EditorInteractionPreview, EditorSessionSnapshot, ToolId } from "../editor";
 import { clientToDocument, clientToViewport, type SurfaceRect } from "./coordinates";
 import type { ModifierState, ToolContext, ToolController, ToolKeyboardInput, ToolPointerInput, ToolRuntimeError } from "./contracts";
@@ -34,6 +34,8 @@ export interface ToolInputRouterDependencies {
   readonly cancelPreview: () => void;
   readonly completePreview: () => void;
   readonly executeDocumentCommand: (command: EditorCommand<Document>) => EditorActionResult;
+  /** Renderer-only transient preview; no RenderInput is created for pointer samples. */
+  readonly setRendererTransformPreview?: (preview?: RenderLayerTransformPreview) => void;
   /** Synchronizes a shortcut-driven controller change with session-owned active tool state. */
   readonly onShortcutToolSelected?: (toolId: ToolId) => void;
   readonly onError?: (error: ToolRuntimeError) => void;
@@ -63,16 +65,17 @@ export class ToolInputRouter {
     this.#transaction = new InteractionTransaction<EditorInteractionPreview>({
       begin: preview => { dependencies.beginPreview(preview); dependencies.overlay.update(preview, dependencies.getViewport()); },
       update: preview => { dependencies.updatePreview(preview); dependencies.overlay.update(preview, dependencies.getViewport()); },
-      finish: () => { dependencies.completePreview(); dependencies.overlay.clear(); },
+      finish: () => { dependencies.completePreview(); dependencies.setRendererTransformPreview?.(); dependencies.overlay.clear(); },
     });
     this.#context = {
       getSessionSnapshot: dependencies.getSessionSnapshot,
       getViewport: dependencies.getViewport,
       beginPreview: preview => this.#transaction.begin(preview),
       updatePreview: preview => this.#transaction.update(preview),
-      cancelPreview: () => { if (!this.#transaction.cancel()) { dependencies.cancelPreview(); dependencies.overlay.clear(); } },
+      cancelPreview: () => { if (!this.#transaction.cancel()) { dependencies.cancelPreview(); dependencies.setRendererTransformPreview?.(); dependencies.overlay.clear(); } },
       completePreview: () => { this.#transaction.commit(); },
-      commit: command => { this.#transaction.commit(); return dependencies.executeDocumentCommand(command); },
+      setRendererTransformPreview: preview => dependencies.setRendererTransformPreview?.(preview),
+      commit: command => { const result = dependencies.executeDocumentCommand(command); this.#transaction.commit(); return result; },
     };
     this.#controller.activate?.(this.#context);
   }
@@ -139,6 +142,7 @@ export class ToolInputRouter {
       const error: ToolRuntimeError = { phase, message: cause instanceof Error ? cause.message : "Tool controller failed", cause };
       this.#lastError = error;
       this.dependencies.cancelPreview();
+      this.dependencies.setRendererTransformPreview?.();
       this.dependencies.overlay.clear();
       this.#releasePointerCapture();
       this.dependencies.onError?.(error);

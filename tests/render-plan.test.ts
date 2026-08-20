@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDocument, createGroupLayer, createRasterLayer } from "../src/core";
-import { calculateRenderNodeBounds, createRenderInput, createRenderPlan, createSolidRasterSource, InMemoryRasterSourceResolver, RasterResourceCache, transformPoint } from "../src/renderer";
+import { calculateRenderNodeBounds, createRenderInput, createRenderPlan, createSolidRasterSource, InMemoryRasterSourceResolver, invertAffine, previewedNodeTransform, RasterResourceCache, transformPoint, transformVector } from "../src/renderer";
 
 const raster = (id: string, options = {}) => createRasterLayer(id, id, options, { kind: "raster-reference", sourceId: id, storage: "lazy" });
 
@@ -25,6 +25,16 @@ describe("render plan", () => {
   it("maps position, scale, and rotation into one shared affine transform", () => {
     const document = createDocument("doc", "Document", 100, 100); document.layerTree.add(raster("rotated", { transform: { position: { x: 10, y: 20 }, scale: { x: 2, y: 3 }, rotation: 90 } }));
     const transform = createRenderPlan(createRenderInput(document)).layers[0].transform; expect(transform.a).toBeCloseTo(0); expect(transform.b).toBeCloseTo(2); expect(transform.c).toBeCloseTo(-3); expect(transform.d).toBeCloseTo(0); expect(transform.e).toBe(10); expect(transform.f).toBe(20);
+  });
+
+  it("applies a transient document-space preview to a target and group descendants without mutating the plan", () => {
+    const document = createDocument("doc", "Document", 100, 100); document.layerTree.add(createGroupLayer("group", "Group", { transform: { position: { x: 10, y: 20 }, scale: { x: 2, y: 1 }, rotation: 0 } })); document.layerTree.add(raster("child", { transform: { position: { x: 3, y: 4 }, scale: { x: 1, y: 1 }, rotation: 0 } }), "group");
+    const plan = createRenderPlan(createRenderInput(document)); const group = plan.nodes[0]; const child = plan.layers[0]; const preview = { layerId: "group", documentDelta: { x: 17.5, y: -8.25 } };
+    expect(previewedNodeTransform(group, preview)).toMatchObject({ e: 27.5, f: 11.75 }); expect(previewedNodeTransform(child, preview, true)).toMatchObject({ e: 33.5, f: 15.75 }); expect(child.transform).toMatchObject({ e: 16, f: 24 });
+  });
+
+  it("inverts affine parent transforms for local movement deltas including negative scale", () => {
+    const document = createDocument("doc", "Document", 100, 100); document.layerTree.add(createGroupLayer("parent", "Parent", { transform: { position: { x: 4, y: 9 }, scale: { x: -2, y: 0.5 }, rotation: 0 } })); const affine = createRenderPlan(createRenderInput(document)).nodes[0].transform; const inverse = invertAffine(affine); expect(inverse).toBeDefined(); expect(transformVector(inverse!, { x: 20, y: 10 })).toEqual({ x: -10, y: 20 }); expect(invertAffine({ a: 0, b: 0, c: 0, d: 1, e: 0, f: 0 })).toBeUndefined();
   });
 
   it("composes nested rotation, non-uniform scale, and negative child scale", () => {
