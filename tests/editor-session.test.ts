@@ -84,6 +84,14 @@ describe("editor session command bridge", () => {
     expect(session.snapshot.documentRevision).toBe(0);
   });
 
+  it("suppresses repeated session and property values before the command/history boundary", () => {
+    let changes = 0; const session = createEditorSession(fixture(), () => { changes += 1; });
+    const initialSessionRevision = session.snapshot.sessionRevision;
+    session.dispatch({ type: "select-layer", layerId: null }); session.dispatch({ type: "set-active-tool", toolId: "move" }); session.dispatch({ type: "set-foreground-color", color: session.snapshot.foregroundColor });
+    session.dispatch({ type: "set-visibility", layerId: "top", visible: true }); session.dispatch({ type: "set-opacity", layerId: "top", opacity: 1 }); session.dispatch({ type: "set-blend-mode", layerId: "top", blendMode: "normal" }); session.dispatch({ type: "rename-layer", layerId: "top", name: "Top" }); session.dispatch({ type: "set-transform", layerId: "top", transform: { position: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0 } }); session.dispatch({ type: "set-group-compositing", layerId: "group", compositing: "pass-through" });
+    expect(session.snapshot.sessionRevision).toBe(initialSessionRevision); expect(session.snapshot.documentRevision).toBe(0); expect(changes).toBe(0);
+  });
+
   it("reconciles selection and expansion after a structural command", () => {
     const session = createEditorSession(fixture(), () => undefined);
     session.dispatch({ type: "select-layer", layerId: "child-top" });

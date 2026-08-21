@@ -59,6 +59,7 @@ export function createMoveToolController(): ToolController {
     return transform;
   };
   return {
+    sessionChanged(context) { const snapshot = context.getSessionSnapshot(); if (state && (snapshot.documentRevision !== state.documentRevision || snapshot.selectedLayerId !== state.layerId)) cancel(context); },
     pointerDown(input, context) {
       const snapshot = context.getSessionSnapshot();
       const selectedLayerId = snapshot.selectedLayerId;

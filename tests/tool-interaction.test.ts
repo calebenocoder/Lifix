@@ -75,7 +75,7 @@ describe("Move tool", () => {
   it("makes no command for no-op, cancellation, replacement, or a deleted target", () => {
     const { document, session, router, documentChanges } = fixture(true); const capture = host(); router.pointerDown(pointer(), capture); router.pointerUp(pointer(), capture); expect(documentChanges()).toBe(0);
     router.pointerDown(pointer(2), capture); expect(router.keyDown({ key: "Escape", shiftKey: false, altKey: false, ctrlKey: false, metaKey: false, target: null })).toBe(true); expect(capture.released).toContain(2); router.pointerDown(pointer(3), capture); router.pointerCancel({ pointerId: 3 }); expect(capture.released).toContain(3); router.pointerDown(pointer(4), capture); router.setActiveTool("brush"); expect(capture.released).toContain(4); router.setActiveTool("move"); const stopReplacement = session.onDocumentWillReplace(() => router.documentReplaced()); router.pointerDown(pointer(5), capture); session.replaceDocument(createDocument("replacement", "Replacement", 100, 100)); stopReplacement(); expect(capture.released).toContain(5);
-    const fresh = fixture(true); fresh.router.pointerDown(pointer(6), capture); fresh.session.executeDocumentCommand(new DeleteLayerCommand("layer")); fresh.router.pointerUp(pointer(6, 260, 170), capture); expect(fresh.documentChanges()).toBe(1); expect(fresh.session.interactionPreview).toBeUndefined(); expect(document.layerTree.find("layer")!.transform.position).toEqual({ x: 0, y: 0 });
+    const fresh = fixture(true); fresh.router.pointerDown(pointer(6), capture); fresh.session.executeDocumentCommand(new DeleteLayerCommand("layer")); fresh.router.sessionChanged(); expect(fresh.session.interactionPreview).toBeUndefined(); expect(capture.released).toContain(6); fresh.router.pointerUp(pointer(6, 260, 170), capture); expect(fresh.documentChanges()).toBe(1); expect(document.layerTree.find("layer")!.transform.position).toEqual({ x: 0, y: 0 });
   });
 });
 
@@ -122,6 +122,12 @@ describe("Rectangular Marquee tool", () => {
     expect(session.snapshot.selectedLayerId).toBe("layer");
   });
 
+  it("does not execute a command when replacing a selection with identical geometry", () => {
+    const { document, session, router, capture, changes, atDocument } = marqueeFixture(); session.executeDocumentCommand(new SetPixelSelectionCommand(createRectangularPixelSelection({ x: 10, y: 15 }, { x: 70, y: 55 }))); changes.length = 0;
+    router.pointerDown(atDocument(7, { x: 70, y: 55 }), capture); router.pointerUp(atDocument(7, { x: 10, y: 15 }), capture);
+    expect(document.pixelSelection).toEqual({ kind: "rectangle", left: 10, top: 15, right: 70, bottom: 55 }); expect(changes).toEqual([]);
+  });
+
   it("cancels for document replacement and retains the replacement document selection", () => {
     const { session, router, capture, atDocument } = marqueeFixture();
     const replacement = createDocument("replacement", "Replacement", 100, 80);
@@ -133,6 +139,12 @@ describe("Rectangular Marquee tool", () => {
     expect(capture.released).toEqual([1]);
     expect(session.snapshot.pixelSelection).toEqual({ kind: "rectangle", left: 2, top: 3, right: 20, bottom: 30 });
     expect(session.interactionPreview).toBeUndefined();
+  });
+
+  it("cancels immediately when another document command invalidates an active marquee", () => {
+    const { session, router, capture, atDocument } = marqueeFixture(); router.pointerDown(atDocument(9, { x: 10, y: 10 }), capture);
+    session.dispatch({ type: "set-visibility", layerId: "layer", visible: false }); router.sessionChanged();
+    expect(session.interactionPreview).toBeUndefined(); expect(capture.released).toContain(9); expect(session.snapshot.pixelSelection).toBeNull();
   });
 });
 

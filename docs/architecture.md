@@ -105,6 +105,28 @@ The current rectangular pixel selection is translated into the new document coor
 
 The crop controller owns a transient full-document rectangle in document space. Its eight handles and move region are projected into logical viewport space by the DOM overlay; zoom, pan, resize, and DPR therefore do not alter crop geometry. Pointer movement never creates a command or renderer snapshot. Enter rounds edges to integer pixels, enforces a minimum `1 × 1` canvas, and commits exactly one command; a full-document rectangle is a no-op. Escape, pointer cancellation, tool changes, and document replacement discard the preview. After a successful crop the application explicitly fits the new document in the existing renderer instance, which preserves the separation between document state and viewport state and reuses raster/GPU resources. Canvas expansion, rotation, straighten, resampling, destructive pixel deletion, and history UI remain future work.
 
+### Current editing pipeline and ownership
+
+The implemented editing foundation has one authority for each state category:
+
+- **Core Document:** canvas dimensions, layer hierarchy and local transforms, visibility, opacity, blend/group compositing, raster references, and committed pixel selection.
+- **Editor Session:** selected layer, expanded groups, active tool, and foreground/background colors. These values are neither project data nor renderer state.
+- **Transient interaction:** the active pointer gesture and Move, Transform, Marquee, or Crop preview. Controllers own this state only for the transaction lifetime.
+- **Workspace:** theme, panels, and future docking layout. Theme changes do not replace Core, Renderer, documents, or raster resources.
+- **Renderer:** detached `RenderInput`, immutable render plan, viewport, backend resources, raster caches, temporary group surfaces, transient transform override, and coalesced frame scheduling.
+
+The canonical committed path is `pointer/input -> ToolInputRouter -> transient preview -> one Core command -> EditorSessionController.executeDocumentCommand() -> detached session/RenderInput projections -> Renderer`. Move and Transform send renderer-only affine previews; Marquee and Crop use the DOM overlay. None of those previews are serialized or enter React subscription state on pointer movement. The overlay always projects document geometry into logical viewport coordinates; it never treats DPR-scaled physical pixels as authoritative. Crop has input precedence while active, Transform owns its handles while active, and Marquee/Move own accepted viewport drags; the committed selection outline is non-interactive.
+
+No-op Move/Transform/Crop/Marquee commits and repeated Properties/session values are suppressed before the future History insertion point. Escape, pointer cancellation, tool switching, selected-target changes, document mutations that invalidate a gesture, document replacement, and teardown clear previews and pointer capture without mutating authoritative state. `executeDocumentCommand()` remains the single application insertion point for future History: one user gesture maps to at most one history operation.
+
+Currently functional behavior is layer selection, Layers/Properties editing, visibility, Move, rectangular pixel selection, Transform, Crop, Normal/Multiply/Screen/Overlay compositing, pass-through/isolated groups, and Canvas/WebGPU presentation. Selection remains independent from the single selected layer; multi-layer targeting is intentionally deferred. The transform bounds-provider boundary already permits future non-raster target geometry, although the current runtime supplies raster metadata and conservative group unions.
+
+### Future Paint Engine boundary
+
+Real pixel editing is the next missing foundation and must not mutate the current immutable diagnostic source in place. The intended flow is `pointer samples -> Brush controller -> stroke engine -> transient stroke preview -> raster/tile mutation transaction -> one Core raster-reference/revision command -> changed-region notification -> renderer partial cache update`. Core owns the committed reference/revision and undoable operation; mutable pixel/tile storage belongs behind a platform-independent raster-storage contract; Renderer owns only uploaded/cache resources.
+
+That phase still requires mutable tiled raster storage, a stroke representation and sampling policy, atomic raster mutation transactions, dirty-region/tile tracking, partial GPU texture uploads, memory budgeting, and an undo storage strategy. Brush/Eraser, History UI, masks, filters, multi-layer selection, and magnetic docking remain deliberately unimplemented. The diagnostic raster scene remains a bounded bootstrap fixture until document creation/import and real raster storage exist; it is isolated behind `RasterSourceResolver` and is not a second document engine.
+
 ## Runtime foundation
 
 `createEditorCore` owns the minimal core lifecycle and is consumed through its public API by the composition root in the React UI. `createRenderer` probes WebGPU behind the renderer boundary; it reports `unavailable` instead of failing when a browser or webview does not provide a GPU adapter. `createPlatformRuntime` is the only frontend runtime detector and returns a neutral `web` or `tauri` result to the UI.

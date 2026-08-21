@@ -3,6 +3,7 @@ import type { ToolContext, ToolController, ToolPointerInput } from "./contracts"
 
 interface MarqueeState { readonly start: { readonly x: number; readonly y: number }; readonly documentRevision: number; }
 const MINIMUM_DOCUMENT_SIZE = 1e-6;
+function sameSelection(first: { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number } | null, second: { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number }): boolean { return Boolean(first && first.left === second.left && first.top === second.top && first.right === second.right && first.bottom === second.bottom); }
 
 /** Rectangle-only Replace mode. Future add/subtract/intersect and masks remain Core evolution work. */
 export function createRectangularMarqueeController(): ToolController {
@@ -15,6 +16,7 @@ export function createRectangularMarqueeController(): ToolController {
     return { start: current.start, current: input.document };
   };
   return {
+    sessionChanged(context) { if (state && context.getSessionSnapshot().documentRevision !== state.documentRevision) cancel(context); },
     pointerDown(input, context) {
       if (![input.document.x, input.document.y].every(Number.isFinite)) return false;
       state = { start: input.document, documentRevision: context.getSessionSnapshot().documentRevision };
@@ -31,6 +33,7 @@ export function createRectangularMarqueeController(): ToolController {
       if (width <= MINIMUM_DOCUMENT_SIZE || height <= MINIMUM_DOCUMENT_SIZE) { if (snapshot.pixelSelection) { const result = context.commit(new ClearPixelSelectionCommand()); if (!result.ok) throw new Error(result.error ?? "Clear pixel selection failed"); } else context.completePreview(); return; }
       const clipped = clipPixelSelectionToDocument(raw, snapshot.document);
       if (!clipped) { if (snapshot.pixelSelection) { const result = context.commit(new ClearPixelSelectionCommand()); if (!result.ok) throw new Error(result.error ?? "Clear pixel selection failed"); } else context.completePreview(); return; }
+      if (sameSelection(snapshot.pixelSelection, clipped)) { context.completePreview(); return; }
       const result = context.commit(new SetPixelSelectionCommand(clipped));
       if (!result.ok) throw new Error(result.error ?? "Set pixel selection failed");
     },

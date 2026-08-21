@@ -8,6 +8,8 @@ export type DocumentChangeListener = (document: Document, change: { readonly aff
 function cloneColor(color: EditorColor): EditorColor { return { ...color }; }
 function validColor(color: EditorColor): boolean { return [color.r, color.g, color.b].every(value => Number.isInteger(value) && value >= 0 && value <= 255); }
 function cloneTransform(layer: Layer) { return { position: { ...layer.transform.position }, scale: { ...layer.transform.scale }, rotation: layer.transform.rotation }; }
+function sameTransform(first: Layer["transform"], second: Layer["transform"]): boolean { return first.position.x === second.position.x && first.position.y === second.position.y && first.scale.x === second.scale.x && first.scale.y === second.scale.y && first.rotation === second.rotation; }
+function sameColor(first: EditorColor, second: EditorColor): boolean { return first.r === second.r && first.g === second.g && first.b === second.b; }
 
 function projectLayer(layer: Layer, document: Document, expanded: ReadonlySet<LayerId>): EditorLayerView {
   const children = layer.kind === "group"
@@ -96,17 +98,17 @@ export class EditorSessionController {
   dispatch(action: EditorSessionAction): EditorActionResult {
     try {
       switch (action.type) {
-        case "select-layer": this.#select(action.layerId); return this.#sessionChanged();
+        case "select-layer": if (action.layerId === this.#selectedLayerId) return { ok: true }; this.#select(action.layerId); return this.#sessionChanged();
         case "toggle-group": this.#toggleGroup(action.layerId); return this.#sessionChanged();
-        case "set-foreground-color": this.#setColor("foreground", action.color); return this.#sessionChanged();
-        case "set-background-color": this.#setColor("background", action.color); return this.#sessionChanged();
-        case "set-active-tool": this.#setActiveTool(action.toolId); return this.#sessionChanged();
-        case "set-visibility": return this.executeDocumentCommand(new SetVisibilityCommand(action.layerId, action.visible));
-        case "set-opacity": return this.executeDocumentCommand(new SetOpacityCommand(action.layerId, action.opacity));
-        case "set-blend-mode": return this.executeDocumentCommand(new SetBlendModeCommand(action.layerId, action.blendMode));
-        case "rename-layer": return this.executeDocumentCommand(new RenameLayerCommand(action.layerId, action.name));
-        case "set-transform": return this.executeDocumentCommand(new SetTransformCommand(action.layerId, action.transform));
-        case "set-group-compositing": return this.executeDocumentCommand(new SetGroupCompositingModeCommand(action.layerId, action.compositing));
+        case "set-foreground-color": if (sameColor(this.#foregroundColor, action.color)) return { ok: true }; this.#setColor("foreground", action.color); return this.#sessionChanged();
+        case "set-background-color": if (sameColor(this.#backgroundColor, action.color)) return { ok: true }; this.#setColor("background", action.color); return this.#sessionChanged();
+        case "set-active-tool": if (action.toolId === this.#activeToolId) return { ok: true }; this.#setActiveTool(action.toolId); return this.#sessionChanged();
+        case "set-visibility": { const layer = this.#requireLayer(action.layerId); return layer.visible === action.visible ? { ok: true } : this.executeDocumentCommand(new SetVisibilityCommand(action.layerId, action.visible)); }
+        case "set-opacity": { const layer = this.#requireLayer(action.layerId); return layer.opacity === action.opacity ? { ok: true } : this.executeDocumentCommand(new SetOpacityCommand(action.layerId, action.opacity)); }
+        case "set-blend-mode": { const layer = this.#requireLayer(action.layerId); return layer.blendMode === action.blendMode ? { ok: true } : this.executeDocumentCommand(new SetBlendModeCommand(action.layerId, action.blendMode)); }
+        case "rename-layer": { const layer = this.#requireLayer(action.layerId); return layer.name === action.name ? { ok: true } : this.executeDocumentCommand(new RenameLayerCommand(action.layerId, action.name)); }
+        case "set-transform": { const layer = this.#requireLayer(action.layerId); return sameTransform(layer.transform, action.transform) ? { ok: true } : this.executeDocumentCommand(new SetTransformCommand(action.layerId, action.transform)); }
+        case "set-group-compositing": { const layer = this.#requireLayer(action.layerId); if (layer.kind !== "group") throw new Error("Layer must be a group"); return layer.compositing === action.compositing ? { ok: true } : this.executeDocumentCommand(new SetGroupCompositingModeCommand(action.layerId, action.compositing)); }
       }
     } catch (cause) {
       return { ok: false, error: cause instanceof Error ? cause.message : "Editor operation failed" };
@@ -149,6 +151,7 @@ export class EditorSessionController {
   cancelInteractionPreview(): void { this.#clearInteractionPreview(); }
 
   #select(layerId: LayerId | null): void { if (layerId !== null && !this.#document.layerTree.find(layerId)) throw new Error(`Unknown layer: ${layerId}`); this.#selectedLayerId = layerId; }
+  #requireLayer(layerId: LayerId): Layer { const layer = this.#document.layerTree.find(layerId); if (!layer) throw new Error(`Unknown layer: ${layerId}`); return layer; }
   #toggleGroup(layerId: LayerId): void { const layer = this.#document.layerTree.find(layerId); if (layer?.kind !== "group") throw new Error("Layer must be a group"); if (this.#expandedGroupIds.has(layerId)) this.#expandedGroupIds.delete(layerId); else this.#expandedGroupIds.add(layerId); }
   #setColor(target: "foreground" | "background", color: EditorColor): void { if (!validColor(color)) throw new RangeError("RGB channels must be integers between 0 and 255"); if (target === "foreground") this.#foregroundColor = cloneColor(color); else this.#backgroundColor = cloneColor(color); }
   #setActiveTool(toolId: ToolId): void { if (!toolIds.includes(toolId)) throw new Error(`Unknown tool: ${toolId}`); this.#activeToolId = toolId; }
