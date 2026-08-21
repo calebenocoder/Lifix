@@ -5,13 +5,14 @@ import { clonePixelSelection, setPixelSelection, type PixelSelection } from "./s
 export interface EditorCommand<State> { readonly label: string; /** Selection-only commands can update editor projections without rebuilding image render input. */ readonly affectsImageRendering?: boolean; execute(state: State): State; undo(state: State): State; }
 export interface History<State> { readonly canUndo: boolean; readonly canRedo: boolean; execute(command: EditorCommand<State>): void; undo(): void; redo(): void; }
 export interface Tool { readonly id: string; readonly label: string; }
+export interface CropBounds { readonly left: number; readonly top: number; readonly width: number; readonly height: number; }
 
 abstract class DocumentCommand implements EditorCommand<Document> {
-  #previous?: { readonly layerTree: LayerTreeState; readonly pixelSelection: PixelSelection | null };
+  #previous?: { readonly width: number; readonly height: number; readonly layerTree: LayerTreeState; readonly pixelSelection: PixelSelection | null };
   abstract readonly label: string;
   readonly affectsImageRendering: boolean = true;
-  execute(document: Document): Document { this.#previous = { layerTree: document.layerTree.snapshot(), pixelSelection: clonePixelSelection(document.pixelSelection) }; this.apply(document); return document; }
-  undo(document: Document): Document { if (!this.#previous) throw new Error("Command has not been executed"); document.layerTree.restore(this.#previous.layerTree); document.pixelSelection = clonePixelSelection(this.#previous.pixelSelection); return document; }
+  execute(document: Document): Document { this.#previous = { width: document.width, height: document.height, layerTree: document.layerTree.snapshot(), pixelSelection: clonePixelSelection(document.pixelSelection) }; this.apply(document); return document; }
+  undo(document: Document): Document { if (!this.#previous) throw new Error("Command has not been executed"); document.width = this.#previous.width; document.height = this.#previous.height; document.layerTree.restore(this.#previous.layerTree); document.pixelSelection = clonePixelSelection(this.#previous.pixelSelection); return document; }
   protected abstract apply(document: Document): void;
   protected layer(document: Document, id: LayerId) { const layer = document.layerTree.find(id); if (!layer) throw new Error(`Unknown layer: ${id}`); return layer; }
 }
@@ -55,6 +56,24 @@ export class ClearPixelSelectionCommand extends DocumentCommand {
   readonly label = "Clear pixel selection";
   override readonly affectsImageRendering = false;
   protected apply(document: Document): void { setPixelSelection(document, null); }
+}
+export class CropDocumentCommand extends DocumentCommand {
+  readonly label = "Crop document";
+  constructor(private readonly bounds: CropBounds) { super(); }
+  protected apply(document: Document): void {
+    const { left, top, width, height } = this.bounds;
+    if (!Number.isSafeInteger(document.width) || !Number.isSafeInteger(document.height) || document.width < 1 || document.height < 1) throw new RangeError("Document dimensions must be positive integer pixels");
+    if (![left, top, width, height].every(Number.isSafeInteger)) throw new RangeError("Crop bounds must use integer pixel coordinates");
+    if (left < 0 || top < 0 || width < 1 || height < 1) throw new RangeError("Crop bounds must define a positive canvas within the document");
+    if (left + width > document.width || top + height > document.height) throw new RangeError("Crop bounds must remain within the document");
+    const roots = document.layerTree.rootLayerIds.map(id => this.layer(document, id));
+    const positions = roots.map(layer => ({ layer, x: layer.transform.position.x - left, y: layer.transform.position.y - top }));
+    if (positions.some(position => !Number.isFinite(position.x) || !Number.isFinite(position.y))) throw new RangeError("Cropped root transforms must remain finite");
+    const selection = document.pixelSelection ? { ...document.pixelSelection, left: document.pixelSelection.left - left, top: document.pixelSelection.top - top, right: document.pixelSelection.right - left, bottom: document.pixelSelection.bottom - top } : null;
+    document.width = width; document.height = height;
+    positions.forEach(({ layer, x, y }) => { layer.transform = { ...layer.transform, position: { x, y } }; });
+    setPixelSelection(document, selection);
+  }
 }
 export class MoveLayerCommand extends DocumentCommand { readonly label: string = "Move layer"; constructor(private readonly id: LayerId, private readonly parentId: LayerId | null, private readonly index?: number) { super(); } protected apply(document: Document): void { this.layer(document, this.id); document.layerTree.move(this.id, this.parentId, this.index); } }
 export class ReorderLayerCommand extends DocumentCommand { readonly label = "Reorder layer"; constructor(private readonly id: LayerId, private readonly index: number) { super(); } protected apply(document: Document): void { if (!Number.isInteger(this.index) || this.index < 0) throw new RangeError("Layer index must be a non-negative integer"); this.layer(document, this.id); document.layerTree.reorder(this.id, this.index); } }

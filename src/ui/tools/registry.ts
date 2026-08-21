@@ -3,6 +3,7 @@ import type { ToolId } from "../editor";
 import { createRectangularMarqueeController } from "./marquee";
 import { createMoveToolController } from "./move";
 import { createTransformToolController } from "./transform";
+import { createCropToolController } from "./crop";
 
 function createPlaceholderController(): ToolController { return {}; }
 
@@ -12,7 +13,7 @@ const definitions: readonly ToolDefinition[] = [
   { id: "marquee", label: "Marquee", icon: "marquee", cursor: "crosshair", shortcut: { key: "m" }, createController: createRectangularMarqueeController },
   { id: "brush", label: "Brush", icon: "brush", cursor: "crosshair", shortcut: { key: "b" }, createController: createPlaceholderController },
   { id: "eraser", label: "Eraser", icon: "eraser", cursor: "crosshair", shortcut: { key: "e" }, createController: createPlaceholderController },
-  { id: "crop", label: "Crop", icon: "crop", cursor: "crosshair", shortcut: { key: "c" }, createController: createPlaceholderController },
+  { id: "crop", label: "Crop", icon: "crop", cursor: "crosshair", shortcut: { key: "c" }, createController: createCropToolController },
   { id: "text", label: "Text", icon: "text", cursor: "text", shortcut: { key: "t" }, createController: createPlaceholderController },
   { id: "shape", label: "Shape", icon: "shape", cursor: "crosshair", shortcut: { key: "u" }, createController: createPlaceholderController },
   { id: "hand", label: "Hand", icon: "hand", cursor: "grab", shortcut: { key: "h" }, createController: createPlaceholderController },

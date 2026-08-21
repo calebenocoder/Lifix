@@ -2,6 +2,7 @@ import { documentToViewport, type RenderViewport } from "../../renderer";
 import { clonePixelSelection, type PixelSelection } from "../../core";
 import type { EditorInteractionPreview } from "../editor";
 import type { TransformBoxGeometry } from "./transform-engine";
+import { cropHandlePoints } from "./crop-engine";
 
 export interface OverlayScheduler { request(callback: FrameRequestCallback): number; cancel(id: number): void; }
 const browserScheduler: OverlayScheduler = { request: callback => requestAnimationFrame(callback), cancel: id => cancelAnimationFrame(id) };
@@ -36,6 +37,13 @@ export class InteractionOverlay {
     };
     const committed = this.#committedSelection;
     if (committed) rectangle({ x: committed.left, y: committed.top }, { x: committed.right, y: committed.bottom }, "selection-overlay__committed");
+    if (preview?.kind === "crop-document") {
+      const documentOrigin = documentToViewport({ x: 0, y: 0 }, viewport); const documentEnd = documentToViewport({ x: preview.document.width, y: preview.document.height }, viewport); const cropOrigin = documentToViewport({ x: preview.rectangle.left, y: preview.rectangle.top }, viewport); const cropEnd = documentToViewport({ x: preview.rectangle.right, y: preview.rectangle.bottom }, viewport);
+      const block = (left: number, top: number, width: number, height: number) => { if (width <= 0 || height <= 0) return; const element = this.#element!.ownerDocument.createElement("div"); element.className = "crop-overlay__dim"; element.style.left = `${left}px`; element.style.top = `${top}px`; element.style.width = `${width}px`; element.style.height = `${height}px`; fragment.append(element); };
+      block(documentOrigin.x, documentOrigin.y, documentEnd.x - documentOrigin.x, cropOrigin.y - documentOrigin.y); block(documentOrigin.x, cropEnd.y, documentEnd.x - documentOrigin.x, documentEnd.y - cropEnd.y); block(documentOrigin.x, cropOrigin.y, cropOrigin.x - documentOrigin.x, cropEnd.y - cropOrigin.y); block(cropEnd.x, cropOrigin.y, documentEnd.x - cropEnd.x, cropEnd.y - cropOrigin.y);
+      const outline = this.#element.ownerDocument.createElement("div"); outline.className = "crop-overlay__outline"; outline.style.left = `${cropOrigin.x}px`; outline.style.top = `${cropOrigin.y}px`; outline.style.width = `${cropEnd.x - cropOrigin.x}px`; outline.style.height = `${cropEnd.y - cropOrigin.y}px`; fragment.append(outline);
+      const cursors = ["nwse", "ns", "nesw", "ew", "nwse", "ns", "nesw", "ew"]; cropHandlePoints(preview.rectangle).map(point => documentToViewport(point, viewport)).forEach((point, index) => { const handle = this.#element!.ownerDocument.createElement("div"); handle.className = `crop-overlay__handle crop-overlay__handle--${cursors[index]}`; handle.style.left = `${point.x}px`; handle.style.top = `${point.y}px`; fragment.append(handle); });
+    }
     const transformBox = this.#transformBox;
     if (transformBox) {
       const corners = transformBox.corners.map(point => documentToViewport(point, viewport));

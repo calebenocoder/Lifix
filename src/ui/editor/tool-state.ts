@@ -38,5 +38,12 @@ export interface TransformLayerPreview {
   readonly transform: Transform;
 }
 
-export type EditorInteractionPreview = DiagnosticPointerPreview | MoveLayerPreview | RectangularMarqueePreview | TransformLayerPreview;
+export interface CropDocumentPreview {
+  readonly kind: "crop-document";
+  readonly toolId: "crop";
+  readonly rectangle: { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number };
+  readonly document: { readonly width: number; readonly height: number };
+}
+
+export type EditorInteractionPreview = DiagnosticPointerPreview | MoveLayerPreview | RectangularMarqueePreview | TransformLayerPreview | CropDocumentPreview;
 import type { Transform } from "../../core";

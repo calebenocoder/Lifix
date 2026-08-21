@@ -42,6 +42,13 @@ button { color: inherit; }
 .renderer-surface { display: block; max-width: 100%; max-height: 100%; background: var(--ui-background-canvas); }
 .editor-interaction-overlay { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .interaction-overlay__marker { position: absolute; min-width: 8px; min-height: 8px; border: 1px solid var(--ui-interaction-focus); border-radius: var(--ui-radius-small); background: color-mix(in srgb, var(--ui-interaction-selected) 22%, transparent); box-shadow: 0 0 0 1px var(--ui-background-canvas); }
+.crop-overlay__dim { position: absolute; background: color-mix(in srgb, var(--ui-background-workspace) 62%, transparent); pointer-events: none; }
+.crop-overlay__outline { position: absolute; border: 1px solid var(--ui-interaction-focus); box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-background-canvas) 70%, transparent); pointer-events: none; }
+.crop-overlay__handle { position: absolute; width: 9px; height: 9px; transform: translate(-50%, -50%); border: 1px solid var(--ui-interaction-focus); background: var(--ui-background-surface); box-sizing: border-box; pointer-events: auto; }
+.crop-overlay__handle--nwse { cursor: nwse-resize; }
+.crop-overlay__handle--nesw { cursor: nesw-resize; }
+.crop-overlay__handle--ns { cursor: ns-resize; }
+.crop-overlay__handle--ew { cursor: ew-resize; }
 .transform-overlay__svg { position: absolute; inset: 0; overflow: visible; }
 .transform-overlay__outline { fill: none; stroke: var(--ui-interaction-focus); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .transform-overlay__handle, .transform-overlay__rotate { position: absolute; width: 9px; height: 9px; transform: translate(-50%, -50%); border: 1px solid var(--ui-interaction-focus); background: var(--ui-background-surface); box-sizing: border-box; pointer-events: auto; }

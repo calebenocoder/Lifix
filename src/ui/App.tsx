@@ -67,6 +67,7 @@ export function App() {
       const editorSession = createEditorSession(document, (changedDocument, change) => {
         if (!change.affectsImageRendering) return;
         const nextInput = createRenderInput(changedDocument);
+        if (change.commandLabel === "Crop document") { renderer.fitDocument(nextInput); overlayRef.current?.setViewport(renderer.viewport); }
         void renderer.render(nextInput);
       });
       editorSessionRef.current = editorSession;

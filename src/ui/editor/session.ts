@@ -3,7 +3,7 @@ import type { EditorActionResult, EditorColor, EditorDocumentView, EditorLayerVi
 import { toolIds, type EditorInteractionPreview, type ToolId } from "./tool-state";
 
 export type EditorSessionListener = (snapshot: EditorSessionSnapshot) => void;
-export type DocumentChangeListener = (document: Document, change: { readonly affectsImageRendering: boolean }) => void;
+export type DocumentChangeListener = (document: Document, change: { readonly affectsImageRendering: boolean; readonly commandLabel?: string }) => void;
 
 function cloneColor(color: EditorColor): EditorColor { return { ...color }; }
 function validColor(color: EditorColor): boolean { return [color.r, color.g, color.b].every(value => Number.isInteger(value) && value >= 0 && value <= 255); }
@@ -121,7 +121,7 @@ export class EditorSessionController {
       this.#reconcileSessionState();
       const affectsImageRendering = command.affectsImageRendering !== false;
       this.#publish(affectsImageRendering);
-      return this.#notifyDocumentChange(affectsImageRendering);
+      return this.#notifyDocumentChange(affectsImageRendering, command.label);
     } catch (cause) {
       return { ok: false, error: cause instanceof Error ? cause.message : "Editor operation failed" };
     }
@@ -166,8 +166,8 @@ export class EditorSessionController {
     this.#snapshot = this.#createSnapshot();
     this.#listeners.forEach(listener => listener(this.#snapshot));
   }
-  #notifyDocumentChange(affectsImageRendering: boolean): EditorActionResult {
-    try { this.onDocumentChange(this.#document, { affectsImageRendering }); return { ok: true }; }
+  #notifyDocumentChange(affectsImageRendering: boolean, commandLabel?: string): EditorActionResult {
+    try { this.onDocumentChange(this.#document, { affectsImageRendering, commandLabel }); return { ok: true }; }
     catch (cause) { return { ok: true, warning: cause instanceof Error ? cause.message : "Document changed, but downstream synchronization failed" }; }
   }
 }

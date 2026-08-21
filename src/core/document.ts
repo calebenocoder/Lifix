@@ -15,7 +15,7 @@ export interface RasterLayer extends LayerBase { readonly kind: "raster"; readon
 export interface GroupLayer extends LayerBase { readonly kind: "group"; compositing: GroupCompositingMode; readonly childLayerIds: LayerId[]; }
 export type Layer = RasterLayer | GroupLayer;
 export interface LayerTreeState { readonly rootLayerIds: LayerId[]; readonly layers: Record<LayerId, Layer>; }
-export interface Document { readonly id: DocumentId; name: string; readonly width: number; readonly height: number; readonly resolution: Resolution; readonly color: ColorInfo; readonly layerTree: LayerTree; readonly metadata: Record<string, string>; /** Authoritative document-space operation region; never layer/session targeting. */ pixelSelection: PixelSelection | null; }
+export interface Document { readonly id: DocumentId; name: string; width: number; height: number; readonly resolution: Resolution; readonly color: ColorInfo; readonly layerTree: LayerTree; readonly metadata: Record<string, string>; /** Authoritative document-space operation region; never layer/session targeting. */ pixelSelection: PixelSelection | null; }
 export interface LayerOptions { visible?: boolean; opacity?: number; blendMode?: BlendMode; transform?: Transform; }
 export interface GroupLayerOptions extends LayerOptions { compositing?: GroupCompositingMode; }
 export const identityTransform = (): Transform => ({ position: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0 });
