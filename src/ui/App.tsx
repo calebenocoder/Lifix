@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
-import { CreateGroupCommand, CreateRasterLayerCommand, createEditorCore, type CoreStatus } from "../core";
+import { CreateGroupCommand, CreateRasterLayerCommand, RasterStore, createEditorCore, type CoreStatus } from "../core";
 import { createPlatformRuntime, type PlatformRuntime } from "../platform";
-import { createDiagnosticRasterSources, createRenderInput, createRenderer, createViewport, InMemoryRasterSourceResolver, type Renderer, type RendererStatus } from "../renderer";
+import { RasterStoreSourceResolver, createDiagnosticRasterSources, createRenderInput, createRenderer, createViewport, type Renderer, type RendererStatus } from "../renderer";
 import { themeCssVariables, type ThemeId } from "./design-system";
 import { createEditorSession, type EditorActionResult, type EditorSessionAction, type EditorSessionController, type EditorSessionSnapshot } from "./editor";
 import { InteractionOverlay, ToolInputRouter, resolveTransformTarget, toolRegistry } from "./tools";
@@ -15,7 +15,10 @@ interface DiagnosticState {
 }
 
 const initialPlatform = createPlatformRuntime();
-const diagnosticSources = new InMemoryRasterSourceResolver(createDiagnosticRasterSources());
+const diagnosticStore = new RasterStore();
+for (const source of createDiagnosticRasterSources()) { diagnosticStore.create({ id: source.id, width: source.width, height: source.height }); const mutation = diagnosticStore.beginMutation(source.id); mutation.writePixels(0, 0, source.width, source.height, source.pixels); mutation.commit(); }
+/** Development fixture only: real editable assets now flow through the same tiled-storage resolver boundary. */
+const diagnosticSources = new RasterStoreSourceResolver(diagnosticStore);
 
 /** Presentation and user-interaction boundary. It does not own editor state. */
 export function App() {

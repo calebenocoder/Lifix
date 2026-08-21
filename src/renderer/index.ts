@@ -4,6 +4,7 @@ export * from "./runtime";
 export * from "./viewport";
 export * from "./transform";
 export * from "./raster-source";
+export * from "./raster-store-resolver";
 export * from "./render-plan";
 export * from "./diagnostic-raster";
 export * from "./compositing";

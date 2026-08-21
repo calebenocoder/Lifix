@@ -1,6 +1,7 @@
 export * from "./commands";
 export * from "./document";
 export * from "./runtime";
+export * from "./raster-store";
 export {
   clonePixelSelection,
   clipPixelSelectionToDocument,

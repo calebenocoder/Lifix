@@ -5,7 +5,10 @@ export const RGBA8_UNORM = { id: "rgba8unorm", channels: "rgba", bitsPerChannel:
 /** The source owns this buffer. Mutating its pixels requires publishing a higher revision. */
 export interface RasterSource { readonly id: string; readonly revision: number; readonly width: number; readonly height: number; readonly format: RasterPixelFormat; readonly pixels: Uint8ClampedArray; }
 export interface RasterDimensions { readonly width: number; readonly height: number; }
-export interface RasterSourceResolver { resolve(reference: RasterDataReference): RasterSource | undefined; subscribe?(listener: (sourceId: string) => void): () => void; }
+/** Tile contract for scalable resolvers. `pixels` is absent for an unallocated transparent tile. */
+export interface RasterTileSource { readonly sourceId: string; readonly assetRevision: number; readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly revision: number; readonly allocated: boolean; readonly format: RasterPixelFormat; readonly pixels?: Uint8ClampedArray; }
+export interface RasterTiledSourceInfo { readonly sourceId: string; readonly revision: number; readonly width: number; readonly height: number; readonly tileSize: number; readonly tileColumns: number; readonly tileRows: number; readonly format: RasterPixelFormat; }
+export interface RasterSourceResolver { resolve(reference: RasterDataReference): RasterSource | undefined; describe?(reference: RasterDataReference): RasterTiledSourceInfo | undefined; resolveTile?(reference: RasterDataReference, tileX: number, tileY: number): RasterTileSource | undefined; subscribe?(listener: (sourceId: string) => void): () => void; }
 export type RasterResourceErrorCode = "missing-source" | "invalid-dimensions" | "invalid-buffer-length" | "unsupported-format" | "resource-creation-failed";
 export interface RasterResourceError { readonly code: RasterResourceErrorCode; readonly message: string; readonly sourceId?: string; readonly cause?: unknown; }
 export interface TextureUploadLayout { readonly width: number; readonly height: number; readonly unpaddedBytesPerRow: number; readonly bytesPerRow: number; readonly rowsPerImage: number; readonly byteLength: number; }
