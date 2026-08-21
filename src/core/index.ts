@@ -2,6 +2,7 @@ export * from "./commands";
 export * from "./document";
 export * from "./runtime";
 export * from "./raster-store";
+export * from "./brush-stroke";
 export {
   clonePixelSelection,
   clipPixelSelectionToDocument,

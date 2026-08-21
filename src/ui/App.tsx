@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
-import { CreateGroupCommand, CreateRasterLayerCommand, RasterStore, createEditorCore, type CoreStatus } from "../core";
+import { CreateGroupCommand, CreateRasterLayerCommand, RasterStore, beginBrushStroke, createEditorCore, type CoreStatus } from "../core";
 import { createPlatformRuntime, type PlatformRuntime } from "../platform";
 import { RasterStoreSourceResolver, createDiagnosticRasterSources, createRenderInput, createRenderer, createViewport, type Renderer, type RendererStatus } from "../renderer";
 import { themeCssVariables, type ThemeId } from "./design-system";
@@ -17,6 +17,9 @@ interface DiagnosticState {
 const initialPlatform = createPlatformRuntime();
 const diagnosticStore = new RasterStore();
 for (const source of createDiagnosticRasterSources()) { diagnosticStore.create({ id: source.id, width: source.width, height: source.height }); const mutation = diagnosticStore.beginMutation(source.id); mutation.writePixels(0, 0, source.width, source.height, source.pixels); mutation.commit(); }
+/** Development-only engine fixture: a single staged stroke crosses the 256px tile boundary without introducing a Brush UI. */
+const diagnosticStroke = beginBrushStroke(diagnosticStore, { assetId: "diagnostic-tiled" }, { diameter: 18, hardness: 0.72, opacity: 0.85, flow: 0.65, spacing: 0.25, color: { r: 248, g: 113, b: 113, a: 255 } });
+diagnosticStroke.addSample({ x: 228, y: 125, pressure: 1 }); diagnosticStroke.addSample({ x: 284, y: 145, pressure: 0.7 }); diagnosticStroke.finish();
 /** Development fixture only: real editable assets now flow through the same tiled-storage resolver boundary. */
 const diagnosticSources = new RasterStoreSourceResolver(diagnosticStore);
 

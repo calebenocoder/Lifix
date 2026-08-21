@@ -9,6 +9,7 @@
 - React provides presentation and interaction only. The platform-independent TypeScript Core owns current domain behavior; UI code must not duplicate it.
 - During the web-first phase, mutable raster pixels belong to the platform-independent Core RasterStore. Renderer caches are derived resources only; do not place raster buffers in React state or create a parallel Rust store.
 - Keep scalable raster rendering tile-granular: render plans remain layer metadata, while renderer backends resolve visible Core tiles and own resources keyed by asset, coordinate, and tile revision. Never materialize a large RasterStore asset for rendering.
+- Keep stroke sampling/rasterization in the platform-independent Core. One logical paint stroke must stage one RasterMutationTransaction; browser input mapping and live visual preview belong to the future tool/controller boundary.
 - Keep document, editor-session, workspace/theme, and renderer state separate. Session-only selection, expansion, and working colors must not create render inputs or invalidate renderer resources.
 - Route document edits through `EditorSessionController.executeDocumentCommand`; it is the single future History/transaction integration point. Do not create panel-local history or mutate projected UI snapshots.
 - Treat Core-to-UI projections as detached metadata. Never place raster buffers or renderer/GPU resources in React state, and reconcile session selection when document structure or identity changes.
