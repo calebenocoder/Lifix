@@ -6,9 +6,10 @@ export const RGBA8_UNORM = { id: "rgba8unorm", channels: "rgba", bitsPerChannel:
 export interface RasterSource { readonly id: string; readonly revision: number; readonly width: number; readonly height: number; readonly format: RasterPixelFormat; readonly pixels: Uint8ClampedArray; }
 export interface RasterDimensions { readonly width: number; readonly height: number; }
 /** Tile contract for scalable resolvers. `pixels` is absent for an unallocated transparent tile. */
-export interface RasterTileSource { readonly sourceId: string; readonly assetRevision: number; readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly revision: number; readonly allocated: boolean; readonly format: RasterPixelFormat; readonly pixels?: Uint8ClampedArray; }
+export interface RasterTileSource { readonly sourceId: string; readonly assetRevision: number; readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly revision: number; readonly allocated: boolean; readonly format: RasterPixelFormat; /** Physical source-buffer stride, allowing edge tiles to retain full backing storage. */ readonly bytesPerRow?: number; readonly pixels?: Uint8ClampedArray; }
 export interface RasterTiledSourceInfo { readonly sourceId: string; readonly revision: number; readonly width: number; readonly height: number; readonly tileSize: number; readonly tileColumns: number; readonly tileRows: number; readonly format: RasterPixelFormat; }
-export interface RasterSourceResolver { resolve(reference: RasterDataReference): RasterSource | undefined; describe?(reference: RasterDataReference): RasterTiledSourceInfo | undefined; resolveTile?(reference: RasterDataReference, tileX: number, tileY: number): RasterTileSource | undefined; subscribe?(listener: (sourceId: string) => void): () => void; }
+export interface RasterTileChange { readonly sourceId: string; readonly tiles?: readonly Pick<RasterTileSource, "x" | "y" | "revision">[]; }
+export interface RasterSourceResolver { resolve(reference: RasterDataReference): RasterSource | undefined; describe?(reference: RasterDataReference): RasterTiledSourceInfo | undefined; resolveTile?(reference: RasterDataReference, tileX: number, tileY: number): RasterTileSource | undefined; enumerateAllocatedTiles?(reference: RasterDataReference): readonly RasterTileSource[] | undefined; subscribe?(listener: (sourceId: string) => void): () => void; subscribeTiles?(listener: (change: RasterTileChange) => void): () => void; }
 export type RasterResourceErrorCode = "missing-source" | "invalid-dimensions" | "invalid-buffer-length" | "unsupported-format" | "resource-creation-failed";
 export interface RasterResourceError { readonly code: RasterResourceErrorCode; readonly message: string; readonly sourceId?: string; readonly cause?: unknown; }
 export interface TextureUploadLayout { readonly width: number; readonly height: number; readonly unpaddedBytesPerRow: number; readonly bytesPerRow: number; readonly rowsPerImage: number; readonly byteLength: number; }
@@ -64,6 +65,42 @@ export class RasterResourceCache<Resource> {
     if (!source) { this.lastError = rasterError("missing-source", `Raster source is unavailable: ${reference.sourceId ?? "unidentified"}`, reference.sourceId); return undefined; }
     try { validateRasterSource(source); this.#dimensions.set(source.id, { revision: source.revision, dimensions: { width: source.width, height: source.height }, usage: this.#usage }); this.lastError = undefined; return source; } catch (cause) { this.lastError = isRasterError(cause) ? cause : rasterError("resource-creation-failed", `Raster source validation failed: ${source.id}`, source.id, cause); return undefined; }
   }
+}
+
+export interface RasterTileRange { readonly minX: number; readonly minY: number; readonly maxX: number; readonly maxY: number; }
+export interface CachedRasterTile<Resource> { readonly tile: RasterTileSource; readonly resource: Resource; }
+/** Backend-owned cache for sparse Core tiles. Entries are keyed by asset + coordinate and refreshed by tile revision. */
+export class RasterTileResourceCache<Resource> {
+  #entries = new Map<string, { revision: number; resource: Resource; usage: number }>(); #usage = 0; lastError?: RasterResourceError;
+  constructor(private readonly resolver: RasterSourceResolver, private readonly create: (source: RasterSource) => Resource, private readonly destroy: (resource: Resource) => void = () => {}) {}
+  describe(reference: RasterDataReference): RasterTiledSourceInfo | undefined { try { return this.resolver.describe?.(reference); } catch (cause) { this.lastError = rasterError("resource-creation-failed", "Raster tile metadata resolution failed", reference.sourceId, cause); return undefined; } }
+  /** Resolves only allocated candidate tiles. Sparse assets enumerate their allocation map instead of their entire logical grid. */
+  visibleTiles(reference: RasterDataReference, range: RasterTileRange): readonly RasterTileSource[] {
+    const info = this.describe(reference); if (!info || !this.resolver.resolveTile) return [];
+    const clipped = { minX: Math.max(0, range.minX), minY: Math.max(0, range.minY), maxX: Math.min(info.tileColumns - 1, range.maxX), maxY: Math.min(info.tileRows - 1, range.maxY) }; if (clipped.maxX < clipped.minX || clipped.maxY < clipped.minY) return [];
+    const allocated = this.resolver.enumerateAllocatedTiles?.(reference); const candidates = (clipped.maxX - clipped.minX + 1) * (clipped.maxY - clipped.minY + 1);
+    if (allocated && allocated.length <= candidates) return allocated.filter(tile => tile.x >= clipped.minX && tile.x <= clipped.maxX && tile.y >= clipped.minY && tile.y <= clipped.maxY).map(tile => this.resolver.resolveTile!(reference, tile.x, tile.y)).filter((tile): tile is RasterTileSource => Boolean(tile?.allocated && tile.pixels));
+    const tiles: RasterTileSource[] = []; for (let y = clipped.minY; y <= clipped.maxY; y += 1) for (let x = clipped.minX; x <= clipped.maxX; x += 1) { const tile = this.resolver.resolveTile(reference, x, y); if (tile?.allocated && tile.pixels) tiles.push(tile); } return tiles;
+  }
+  get(tile: RasterTileSource): Resource | undefined {
+    if (!tile.allocated || !tile.pixels) return undefined; const id = tileKey(tile.sourceId, tile.x, tile.y);
+    try { const entry = this.#entries.get(id); if (entry?.revision === tile.revision) { entry.usage = this.#usage; this.lastError = undefined; return entry.resource; } const resource = this.create(tileRasterSource(tile)); if (entry) this.destroy(entry.resource); this.#entries.set(id, { revision: tile.revision, resource, usage: this.#usage }); this.lastError = undefined; return resource; } catch (cause) { this.lastError = isRasterError(cause) ? cause : rasterError("resource-creation-failed", `Raster tile resource creation failed: ${id}`, tile.sourceId, cause); return undefined; }
+  }
+  beginUsage(): void { this.#usage += 1; }
+  /** Keep previously visible tiles reusable across pan/zoom; revision, asset removal, and backend disposal prune explicitly. */
+  endUsage(): void {}
+  invalidate(sourceId?: string, tiles?: readonly Pick<RasterTileSource, "x" | "y">[]): void { if (!sourceId) { this.#entries.forEach(entry => this.destroy(entry.resource)); this.#entries.clear(); return; } const ids = tiles?.map(tile => tileKey(sourceId, tile.x, tile.y)) ?? [...this.#entries.keys()].filter(id => id.startsWith(`${sourceId}:`)); ids.forEach(id => { const entry = this.#entries.get(id); if (entry) this.destroy(entry.resource); this.#entries.delete(id); }); }
+  dispose(): void { this.invalidate(); }
+  get size(): number { return this.#entries.size; }
+}
+
+export function tileKey(sourceId: string, x: number, y: number): string { return `${sourceId}:${x}:${y}`; }
+function tileRasterSource(tile: RasterTileSource): RasterSource {
+  if (!tile.pixels) throw rasterError("missing-source", "Allocated raster tile has no pixels", tile.sourceId);
+  const required = expectedRasterByteLength(tile.width, tile.height); const sourcePixels = tile.pixels.byteLength === required ? tile.pixels : copyTilePixels(tile, required); return createRgba8RasterSource(tileKey(tile.sourceId, tile.x, tile.y), tile.width, tile.height, sourcePixels, tile.revision);
+}
+function copyTilePixels(tile: RasterTileSource, required: number): Uint8ClampedArray {
+  const sourceStride = tile.bytesPerRow ?? tile.width * 4; if (sourceStride < tile.width * 4 || tile.pixels!.byteLength < sourceStride * tile.height) throw rasterError("invalid-buffer-length", `Raster tile ${tile.sourceId} has an invalid backing buffer`, tile.sourceId); const pixels = new Uint8ClampedArray(required); for (let row = 0; row < tile.height; row += 1) pixels.set(tile.pixels!.subarray(row * sourceStride, row * sourceStride + tile.width * 4), row * tile.width * 4); return pixels;
 }
 export function calculateTextureUploadLayout(width: number, height: number, bytesPerPixel: number = RGBA8_UNORM.bytesPerPixel, alignment: number = 256): TextureUploadLayout {
   if (![width, height, bytesPerPixel, alignment].every(Number.isSafeInteger) || width <= 0 || height <= 0 || bytesPerPixel <= 0 || alignment <= 0) throw new RangeError("Texture upload dimensions and alignment must be positive safe integers"); const unpaddedBytesPerRow = width * bytesPerPixel; const bytesPerRow = Math.ceil(unpaddedBytesPerRow / alignment) * alignment; return { width, height, unpaddedBytesPerRow, bytesPerRow, rowsPerImage: height, byteLength: bytesPerRow * height };

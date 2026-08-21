@@ -9,5 +9,7 @@ export function createDiagnosticRasterSources(): readonly RasterSource[] {
   const screen = pattern("diagnostic-screen", 111, 83, (x, y) => x < 14 || y > 68 ? [37, 99, 235, 210] : [16, 185, 129, Math.round(80 + x / 110 * 150)]);
   const overlay = pattern("diagnostic-overlay", 97, 67, (x, y) => x > y * 1.2 ? [250, 204, 21, 190] : [30, 64, 175, 210]);
   const hidden = pattern("diagnostic-hidden", 17, 9, (x, y) => [16, 185, 129, (x + y) % 2 ? 255 : 96]);
-  return [background, quadrants, alpha, marker, screen, overlay, hidden];
+  /** Deliberately spans 3×2 256px tiles; strong boundary colors expose placement and edge-tile errors. */
+  const tiled = pattern("diagnostic-tiled", 600, 400, (x, y) => { const tile = Math.floor(x / 256) + Math.floor(y / 256) * 3; const colors: readonly (readonly [number, number, number, number])[] = [[84, 110, 170, 255], [113, 88, 180, 255], [56, 150, 150, 255], [170, 104, 82, 255], [107, 142, 82, 255], [170, 148, 62, 255]]; const base = colors[tile]!; return x % 256 < 3 || y % 256 < 3 ? [245, 245, 245, 255] : base; });
+  return [background, quadrants, alpha, marker, screen, overlay, hidden, tiled];
 }

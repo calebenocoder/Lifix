@@ -51,6 +51,7 @@ export function App() {
       if (!active || !surfaceRef.current) return;
       const document = core.createDocument("viewport-validation", "Untitled-1", 1200, 800);
       new CreateRasterLayerCommand("background", "Background", { transform: { position: { x: 140, y: 120 }, scale: { x: 3.6, y: 3.6 }, rotation: 0 } }, null, undefined, { kind: "raster-reference", sourceId: "diagnostic-background", storage: "lazy" }).execute(document);
+      new CreateRasterLayerCommand("tiled", "Tiled raster diagnostic", { opacity: 0.62, transform: { position: { x: 285, y: 185 }, scale: { x: 0.92, y: 0.92 }, rotation: -4 } }, null, undefined, { kind: "raster-reference", sourceId: "diagnostic-tiled", storage: "tiled" }).execute(document);
       new CreateGroupCommand("artwork", "Isolated artwork", { compositing: "isolated", opacity: 0.9, transform: { position: { x: 250, y: 170 }, scale: { x: 1, y: 1 }, rotation: 0 } }).execute(document);
       new CreateRasterLayerCommand("quadrants", "Quadrants", { transform: { position: { x: 0, y: 0 }, scale: { x: 2.1, y: 2.1 }, rotation: 0 } }, "artwork", undefined, { kind: "raster-reference", sourceId: "diagnostic-quadrants", storage: "lazy" }).execute(document);
       new CreateGroupCommand("nested", "Nested", { transform: { position: { x: 130, y: 75 }, scale: { x: 1, y: 1 }, rotation: -12 } }, "artwork").execute(document);
@@ -87,6 +88,8 @@ export function App() {
         setRendererTransformPreview: preview => renderer.setLayerTransformPreview(preview),
         getTransformTarget: layerId => resolveTransformTarget(editorSession.snapshot, layerId, layer => {
           if (!layer.raster) return undefined;
+          const tiled = diagnosticSources.describe(layer.raster);
+          if (tiled) return { x: 0, y: 0, width: tiled.width, height: tiled.height };
           const source = diagnosticSources.resolve(layer.raster);
           return source ? { x: 0, y: 0, width: source.width, height: source.height } : undefined;
         }),
