@@ -2,7 +2,8 @@ import type { Document, EditorCommand } from "../../core";
 import type { RenderLayerTransformPreview, RenderViewport } from "../../renderer";
 import type { EditorActionResult, EditorInteractionPreview, EditorSessionSnapshot, ToolId } from "../editor";
 import { clientToDocument, clientToViewport, type SurfaceRect } from "./coordinates";
-import type { ModifierState, ToolContext, ToolController, ToolKeyboardInput, ToolPointerInput, ToolRuntimeError } from "./contracts";
+import type { BrushToolTarget, ModifierState, ToolContext, ToolController, ToolKeyboardInput, ToolPointerInput, ToolRuntimeError } from "./contracts";
+import type { RasterStore } from "../../core";
 import { InteractionOverlay } from "./overlay";
 import { ToolRegistry } from "./registry";
 import { InteractionTransaction } from "./transaction";
@@ -15,6 +16,7 @@ export interface PointerEventLike {
   readonly pressure: number;
   readonly tiltX: number;
   readonly tiltY: number;
+  readonly twist?: number;
   readonly clientX: number;
   readonly clientY: number;
   readonly shiftKey: boolean;
@@ -38,6 +40,7 @@ export interface ToolInputRouterDependencies {
   /** Renderer-only transient preview; no RenderInput is created for pointer samples. */
   readonly setRendererTransformPreview?: (preview?: RenderLayerTransformPreview) => void;
   readonly getTransformTarget?: (layerId: string) => TransformTarget | undefined;
+  readonly brush?: { readonly store: RasterStore; readonly resolveTarget: () => BrushToolTarget | undefined; };
   /** Synchronizes a shortcut-driven controller change with session-owned active tool state. */
   readonly onShortcutToolSelected?: (toolId: ToolId) => void;
   readonly onError?: (error: ToolRuntimeError) => void;
@@ -79,7 +82,9 @@ export class ToolInputRouter {
       setRendererTransformPreview: preview => dependencies.setRendererTransformPreview?.(preview),
       getTransformTarget: layerId => dependencies.getTransformTarget?.(layerId),
       setTransformBox: box => dependencies.overlay.setTransformBox(box, dependencies.getViewport()),
+      setBrushCursor: cursor => dependencies.overlay.setBrushCursor(cursor, dependencies.getViewport()),
       commit: command => { const result = dependencies.executeDocumentCommand(command); this.#transaction.commit(); return result; },
+      brush: dependencies.brush,
     };
     this.#controller.activate?.(this.#context);
   }
@@ -105,7 +110,7 @@ export class ToolInputRouter {
     host.setPointerCapture(event.pointerId);
     return true;
   }
-  pointerMove(event: PointerEventLike, host: PointerCaptureHost): void { if (event.pointerId === this.#pointerId && !this.#disposed) this.#invoke("pointer", () => this.#controller.pointerMove?.(this.#pointer(event, host), this.#context)); }
+  pointerMove(event: PointerEventLike, host: PointerCaptureHost): void { if (this.#disposed) return; const input = this.#pointer(event, host); if (event.pointerId === this.#pointerId) this.#invoke("pointer", () => this.#controller.pointerMove?.(input, this.#context)); else if (this.#pointerId === undefined) this.#invoke("pointer", () => this.#controller.pointerHover?.(input, this.#context)); }
   pointerUp(event: PointerEventLike, host: PointerCaptureHost): void {
     if (event.pointerId !== this.#pointerId || this.#disposed) return;
     this.#invoke("pointer", () => this.#controller.pointerUp?.(this.#pointer(event, host), this.#context));
@@ -132,7 +137,7 @@ export class ToolInputRouter {
   #pointer(event: PointerEventLike, host: PointerCaptureHost): ToolPointerInput {
     const viewport = this.dependencies.getViewport();
     const rect = host.getBoundingClientRect();
-    return { pointerId: event.pointerId, pointerType: event.pointerType, buttons: event.buttons, pressure: event.pressure, tiltX: event.tiltX, tiltY: event.tiltY, viewport: clientToViewport({ x: event.clientX, y: event.clientY }, rect, viewport), document: clientToDocument({ x: event.clientX, y: event.clientY }, rect, viewport), modifiers: modifiersFromEvent(event) };
+    return { pointerId: event.pointerId, pointerType: event.pointerType, buttons: event.buttons, pressure: event.pressure, tiltX: event.tiltX, tiltY: event.tiltY, twist: event.twist, viewport: clientToViewport({ x: event.clientX, y: event.clientY }, rect, viewport), document: clientToDocument({ x: event.clientX, y: event.clientY }, rect, viewport), modifiers: modifiersFromEvent(event) };
   }
   #releasePointerCapture(): void {
     const pointerId = this.#pointerId;

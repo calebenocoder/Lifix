@@ -2,6 +2,7 @@ export * from "./contracts";
 export * from "./crop";
 export * from "./crop-engine";
 export * from "./coordinates";
+export * from "./brush";
 export * from "./input-router";
 export * from "./marquee";
 export * from "./move";

@@ -14,16 +14,18 @@ export class InteractionOverlay {
   #committedSelection: PixelSelection | null = null;
   #viewport?: RenderViewport;
   #transformBox?: TransformBoxGeometry;
+  #brushCursor?: { readonly document: { readonly x: number; readonly y: number }; readonly diameter: number };
   #frame?: number;
   constructor(private readonly scheduler: OverlayScheduler = browserScheduler) {}
   attach(element: HTMLElement): void { this.#element = element; this.#schedule(); }
   update(preview: EditorInteractionPreview, viewport: RenderViewport): void { this.#preview = preview; this.#viewport = viewport; this.#schedule(); }
   clear(): void { this.#preview = undefined; this.#schedule(); }
   setTransformBox(box: TransformBoxGeometry | undefined, viewport: RenderViewport): void { this.#transformBox = box; this.#viewport = viewport; this.#schedule(); }
+  setBrushCursor(cursor: { readonly document: { readonly x: number; readonly y: number }; readonly diameter: number } | undefined, viewport: RenderViewport): void { this.#brushCursor = cursor; this.#viewport = viewport; this.#schedule(); }
   /** Committed geometry comes from the detached editor projection, never from document pixels. */
   setCommittedPixelSelection(selection: PixelSelection | null, viewport: RenderViewport): void { this.#committedSelection = clonePixelSelection(selection); this.#viewport = viewport; this.#schedule(); }
   setViewport(viewport: RenderViewport): void { this.#viewport = viewport; this.#schedule(); }
-  dispose(): void { if (this.#frame !== undefined) this.scheduler.cancel(this.#frame); this.#frame = undefined; this.#preview = undefined; this.#transformBox = undefined; this.#committedSelection = null; if (this.#element) this.#element.replaceChildren(); this.#element = undefined; }
+  dispose(): void { if (this.#frame !== undefined) this.scheduler.cancel(this.#frame); this.#frame = undefined; this.#preview = undefined; this.#transformBox = undefined; this.#brushCursor = undefined; this.#committedSelection = null; if (this.#element) this.#element.replaceChildren(); this.#element = undefined; }
   #schedule(): void { if (!this.#element || this.#frame !== undefined) return; this.#frame = this.scheduler.request(() => { this.#frame = undefined; this.#render(); }); }
   #render(): void {
     if (!this.#element) return;
@@ -37,6 +39,7 @@ export class InteractionOverlay {
     };
     const committed = this.#committedSelection;
     if (committed) rectangle({ x: committed.left, y: committed.top }, { x: committed.right, y: committed.bottom }, "selection-overlay__committed");
+    if (this.#brushCursor && preview?.kind !== "brush-stroke") { const point = documentToViewport(this.#brushCursor.document, viewport); const cursor = this.#element.ownerDocument.createElement("div"); cursor.className = "brush-overlay__cursor"; cursor.style.left = `${point.x}px`; cursor.style.top = `${point.y}px`; cursor.style.width = `${Math.max(2, this.#brushCursor.diameter * viewport.zoom)}px`; cursor.style.height = `${Math.max(2, this.#brushCursor.diameter * viewport.zoom)}px`; fragment.append(cursor); }
     if (preview?.kind === "crop-document") {
       const documentOrigin = documentToViewport({ x: 0, y: 0 }, viewport); const documentEnd = documentToViewport({ x: preview.document.width, y: preview.document.height }, viewport); const cropOrigin = documentToViewport({ x: preview.rectangle.left, y: preview.rectangle.top }, viewport); const cropEnd = documentToViewport({ x: preview.rectangle.right, y: preview.rectangle.bottom }, viewport);
       const block = (left: number, top: number, width: number, height: number) => { if (width <= 0 || height <= 0) return; const element = this.#element!.ownerDocument.createElement("div"); element.className = "crop-overlay__dim"; element.style.left = `${left}px`; element.style.top = `${top}px`; element.style.width = `${width}px`; element.style.height = `${height}px`; fragment.append(element); };
@@ -60,6 +63,10 @@ export class InteractionOverlay {
     if (preview?.kind === "rectangular-marquee") rectangle(preview.start, preview.current, "selection-overlay__preview");
     if (preview?.kind === "diagnostic-pointer") {
       const start = documentToViewport(preview.start, viewport); const current = documentToViewport(preview.current, viewport); const marker = this.#element.ownerDocument.createElement("div"); marker.className = "interaction-overlay__marker"; marker.setAttribute("aria-hidden", "true"); marker.style.left = `${current.x}px`; marker.style.top = `${current.y}px`; marker.style.width = `${Math.max(8, Math.abs(current.x - start.x))}px`; marker.style.height = `${Math.max(8, Math.abs(current.y - start.y))}px`; marker.style.transform = `translate(${current.x >= start.x ? "0" : "-100%"}, ${current.y >= start.y ? "0" : "-100%"})`; fragment.append(marker);
+    }
+    if (preview?.kind === "brush-stroke") {
+      const start = documentToViewport(preview.start, viewport); const current = documentToViewport(preview.current, viewport); const dx = current.x - start.x, dy = current.y - start.y; const line = this.#element.ownerDocument.createElement("div"); line.className = "brush-overlay__stroke"; line.style.left = `${start.x}px`; line.style.top = `${start.y}px`; line.style.width = `${Math.max(1, Math.hypot(dx, dy))}px`; line.style.height = `${Math.max(1, preview.diameter * viewport.zoom)}px`; line.style.transform = `translate(0, -50%) rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)`; fragment.append(line);
+      const cursor = this.#element.ownerDocument.createElement("div"); cursor.className = "brush-overlay__cursor"; cursor.style.left = `${current.x}px`; cursor.style.top = `${current.y}px`; cursor.style.width = `${Math.max(2, preview.diameter * viewport.zoom)}px`; cursor.style.height = `${Math.max(2, preview.diameter * viewport.zoom)}px`; fragment.append(cursor);
     }
     this.#element.replaceChildren(fragment);
   }

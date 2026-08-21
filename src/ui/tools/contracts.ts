@@ -1,5 +1,5 @@
-import type { EditorCommand, Document } from "../../core";
-import type { RenderLayerTransformPreview, RenderViewport } from "../../renderer";
+import type { EditorCommand, Document, RasterStore } from "../../core";
+import type { AffineTransform, RenderLayerTransformPreview, RenderViewport } from "../../renderer";
 import type { IconName } from "../icons";
 import type { EditorActionResult, EditorInteractionPreview, EditorSessionSnapshot, ToolId } from "../editor";
 import type { TransformBoxGeometry, TransformTarget } from "./transform-engine";
@@ -15,10 +15,12 @@ export interface ToolPointerInput {
   readonly pressure: number;
   readonly tiltX: number;
   readonly tiltY: number;
+  readonly twist?: number;
   readonly viewport: { readonly x: number; readonly y: number };
   readonly document: { readonly x: number; readonly y: number };
   readonly modifiers: ModifierState;
 }
+export interface BrushToolTarget { readonly layerId: string; readonly assetId: string; readonly world: AffineTransform; readonly worldInverse: AffineTransform; readonly documentRevision: number; }
 export interface ToolKeyboardInput { readonly key: string; readonly modifiers: ModifierState; }
 
 /** Controlled boundary: tools receive snapshots and callbacks, never a mutable Document or GPU object. */
@@ -32,7 +34,10 @@ export interface ToolContext {
   readonly setRendererTransformPreview: (preview?: RenderLayerTransformPreview) => void;
   readonly getTransformTarget: (layerId: string) => TransformTarget | undefined;
   readonly setTransformBox: (box?: TransformBoxGeometry) => void;
+  readonly setBrushCursor: (cursor?: { readonly document: { readonly x: number; readonly y: number }; readonly diameter: number }) => void;
   readonly commit: (command: EditorCommand<Document>) => EditorActionResult;
+  /** Application-owned bridge to Core storage; no DOM/GPU object crosses this boundary. */
+  readonly brush?: { readonly store: RasterStore; readonly resolveTarget: () => BrushToolTarget | undefined; };
 }
 
 export interface ToolController {
@@ -41,6 +46,7 @@ export interface ToolController {
   deactivate?(context: ToolContext): void;
   pointerDown?(input: ToolPointerInput, context: ToolContext): boolean | void;
   pointerMove?(input: ToolPointerInput, context: ToolContext): void;
+  pointerHover?(input: ToolPointerInput, context: ToolContext): void;
   pointerUp?(input: ToolPointerInput, context: ToolContext): void;
   pointerCancel?(context: ToolContext): void;
   keyDown?(input: ToolKeyboardInput, context: ToolContext): boolean | void;

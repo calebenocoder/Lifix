@@ -96,6 +96,19 @@ export function App() {
           const source = diagnosticSources.resolve(layer.raster);
           return source ? { x: 0, y: 0, width: source.width, height: source.height } : undefined;
         }),
+        brush: {
+          store: diagnosticStore,
+          resolveTarget: () => {
+            const snapshot = editorSession.snapshot; const layer = snapshot.selectedLayer;
+            if (!layer || layer.kind !== "raster" || !layer.visible || !layer.raster?.sourceId || !diagnosticStore.get(layer.raster.sourceId)) return undefined;
+            const target = resolveTransformTarget(snapshot, layer.id, candidate => {
+              if (!candidate.raster) return undefined;
+              const tiled = diagnosticSources.describe(candidate.raster);
+              return tiled ? { x: 0, y: 0, width: tiled.width, height: tiled.height } : undefined;
+            });
+            return target ? { layerId: layer.id, assetId: layer.raster.sourceId, world: target.originalWorld, worldInverse: target.originalWorldInverse, documentRevision: target.documentRevision } : undefined;
+          },
+        },
         onShortcutToolSelected: toolId => { editorSession.dispatch({ type: "set-active-tool", toolId }); },
       }, editorSession.snapshot.activeToolId);
       inputRouterRef.current = inputRouter;
@@ -141,7 +154,7 @@ export function App() {
     return result;
   }, []);
   const routePointerDown = useCallback((event: PointerEvent<HTMLElement>) => { event.currentTarget.focus(); inputRouterRef.current?.pointerDown(event.nativeEvent, event.currentTarget); }, []);
-  const routePointerMove = useCallback((event: PointerEvent<HTMLElement>) => inputRouterRef.current?.pointerMove(event.nativeEvent, event.currentTarget), []);
+  const routePointerMove = useCallback((event: PointerEvent<HTMLElement>) => { const native = event.nativeEvent; const coalesced = native.getCoalescedEvents?.(); const samples = coalesced && coalesced.length ? coalesced : [native]; samples.forEach(sample => inputRouterRef.current?.pointerMove(sample, event.currentTarget)); }, []);
   const routePointerUp = useCallback((event: PointerEvent<HTMLElement>) => inputRouterRef.current?.pointerUp(event.nativeEvent, event.currentTarget), []);
   const routePointerCancel = useCallback((event: PointerEvent<HTMLElement>) => inputRouterRef.current?.pointerCancel(event.nativeEvent), []);
   const routeKeyDown = useCallback((event: KeyboardEvent<HTMLElement>) => { if (inputRouterRef.current?.keyDown(event.nativeEvent)) event.preventDefault(); }, []);

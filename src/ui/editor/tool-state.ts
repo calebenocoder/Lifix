@@ -45,5 +45,14 @@ export interface CropDocumentPreview {
   readonly document: { readonly width: number; readonly height: number };
 }
 
-export type EditorInteractionPreview = DiagnosticPointerPreview | MoveLayerPreview | RectangularMarqueePreview | TransformLayerPreview | CropDocumentPreview;
+/** Lightweight DOM-only feedback while a Core brush transaction remains staged. */
+export interface BrushStrokePreview {
+  readonly kind: "brush-stroke";
+  readonly toolId: "brush";
+  readonly start: InteractionPreviewPoint;
+  readonly current: InteractionPreviewPoint;
+  readonly diameter: number;
+}
+
+export type EditorInteractionPreview = DiagnosticPointerPreview | MoveLayerPreview | RectangularMarqueePreview | TransformLayerPreview | CropDocumentPreview | BrushStrokePreview;
 import type { Transform } from "../../core";

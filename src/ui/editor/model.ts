@@ -2,6 +2,9 @@ import type { BlendMode, GroupCompositingMode, Layer, LayerId, PixelSelection, R
 import type { ToolId } from "./tool-state";
 
 export interface EditorColor { readonly r: number; readonly g: number; readonly b: number; }
+/** Session-only brush controls. Values are normalized except diameter, which is raster pixels. */
+export interface BrushSettings { readonly diameter: number; readonly hardness: number; readonly opacity: number; readonly flow: number; readonly spacing: number; }
+export const defaultBrushSettings = (): BrushSettings => ({ diameter: 32, hardness: 0.8, opacity: 1, flow: 0.7, spacing: 0.25 });
 
 export interface EditorLayerView {
   readonly id: LayerId;
@@ -38,6 +41,7 @@ export interface EditorSessionSnapshot {
   readonly expandedGroupIds: readonly LayerId[];
   readonly foregroundColor: EditorColor;
   readonly backgroundColor: EditorColor;
+  readonly brushSettings: BrushSettings;
   /** Low-frequency tool state for UI presentation; pointer preview data stays outside React. */
   readonly activeToolId: ToolId;
   readonly interactionActive: boolean;
@@ -54,6 +58,7 @@ export type EditorSessionAction =
   | { readonly type: "set-group-compositing"; readonly layerId: LayerId; readonly compositing: GroupCompositingMode }
   | { readonly type: "set-foreground-color"; readonly color: EditorColor }
   | { readonly type: "set-background-color"; readonly color: EditorColor }
+  | { readonly type: "set-brush-settings"; readonly settings: Partial<BrushSettings> }
   | { readonly type: "set-active-tool"; readonly toolId: ToolId };
 
 export interface EditorActionResult {

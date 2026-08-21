@@ -1,5 +1,5 @@
 import { clonePixelSelection, RenameLayerCommand, SetBlendModeCommand, SetGroupCompositingModeCommand, SetOpacityCommand, SetTransformCommand, SetVisibilityCommand, type Document, type EditorCommand, type Layer, type LayerId, type PixelSelection } from "../../core";
-import type { EditorActionResult, EditorColor, EditorDocumentView, EditorLayerView, EditorSessionAction, EditorSessionSnapshot } from "./model";
+import { defaultBrushSettings, type BrushSettings, type EditorActionResult, type EditorColor, type EditorDocumentView, type EditorLayerView, type EditorSessionAction, type EditorSessionSnapshot } from "./model";
 import { toolIds, type EditorInteractionPreview, type ToolId } from "./tool-state";
 
 export type EditorSessionListener = (snapshot: EditorSessionSnapshot) => void;
@@ -10,6 +10,8 @@ function validColor(color: EditorColor): boolean { return [color.r, color.g, col
 function cloneTransform(layer: Layer) { return { position: { ...layer.transform.position }, scale: { ...layer.transform.scale }, rotation: layer.transform.rotation }; }
 function sameTransform(first: Layer["transform"], second: Layer["transform"]): boolean { return first.position.x === second.position.x && first.position.y === second.position.y && first.scale.x === second.scale.x && first.scale.y === second.scale.y && first.rotation === second.rotation; }
 function sameColor(first: EditorColor, second: EditorColor): boolean { return first.r === second.r && first.g === second.g && first.b === second.b; }
+function sameBrushSettings(first: BrushSettings, second: BrushSettings): boolean { return first.diameter === second.diameter && first.hardness === second.hardness && first.opacity === second.opacity && first.flow === second.flow && first.spacing === second.spacing; }
+function brushSettings(current: BrushSettings, update: Partial<BrushSettings>): BrushSettings { const next = { ...current, ...update }; if (!Number.isFinite(next.diameter) || next.diameter < 1 || next.diameter > 2000) throw new RangeError("Brush size must be between 1 and 2000 pixels"); for (const [label, value] of Object.entries({ hardness: next.hardness, opacity: next.opacity, flow: next.flow, spacing: next.spacing })) if (!Number.isFinite(value) || value < 0 || value > 1) throw new RangeError(`Brush ${label} must be between 0 and 1`); if (next.spacing <= 0) throw new RangeError("Brush spacing must be positive"); return next; }
 
 function projectLayer(layer: Layer, document: Document, expanded: ReadonlySet<LayerId>): EditorLayerView {
   const children = layer.kind === "group"
@@ -45,7 +47,7 @@ function findLayer(nodes: readonly EditorLayerView[], selectedLayerId: LayerId |
   return undefined;
 }
 
-function createSnapshot(document: EditorDocumentView, selectedLayerId: LayerId | null, pixelSelection: PixelSelection | null, expandedGroupIds: ReadonlySet<LayerId>, foregroundColor: EditorColor, backgroundColor: EditorColor, documentRevision: number, sessionRevision: number, activeToolId: ToolId, interactionActive: boolean): EditorSessionSnapshot {
+function createSnapshot(document: EditorDocumentView, selectedLayerId: LayerId | null, pixelSelection: PixelSelection | null, expandedGroupIds: ReadonlySet<LayerId>, foregroundColor: EditorColor, backgroundColor: EditorColor, brush: BrushSettings, documentRevision: number, sessionRevision: number, activeToolId: ToolId, interactionActive: boolean): EditorSessionSnapshot {
   return {
     documentRevision,
     sessionRevision,
@@ -56,13 +58,14 @@ function createSnapshot(document: EditorDocumentView, selectedLayerId: LayerId |
     expandedGroupIds: [...expandedGroupIds],
     foregroundColor: cloneColor(foregroundColor),
     backgroundColor: cloneColor(backgroundColor),
+    brushSettings: { ...brush },
     activeToolId,
     interactionActive,
   };
 }
 
 export function projectEditorSnapshot(document: Document, selectedLayerId: LayerId | null, expandedGroupIds: ReadonlySet<LayerId>, foregroundColor: EditorColor, backgroundColor: EditorColor, documentRevision: number, sessionRevision: number, activeToolId: ToolId = "move", interactionActive = false): EditorSessionSnapshot {
-  return createSnapshot(projectDocument(document, expandedGroupIds), selectedLayerId, document.pixelSelection, expandedGroupIds, foregroundColor, backgroundColor, documentRevision, sessionRevision, activeToolId, interactionActive);
+  return createSnapshot(projectDocument(document, expandedGroupIds), selectedLayerId, document.pixelSelection, expandedGroupIds, foregroundColor, backgroundColor, defaultBrushSettings(), documentRevision, sessionRevision, activeToolId, interactionActive);
 }
 
 export class EditorSessionController {
@@ -72,6 +75,7 @@ export class EditorSessionController {
   #selectedLayerId: LayerId | null = null;
   #foregroundColor: EditorColor = { r: 32, g: 102, b: 242 };
   #backgroundColor: EditorColor = { r: 255, g: 255, b: 255 };
+  #brushSettings: BrushSettings = defaultBrushSettings();
   #documentRevision = 0;
   #sessionRevision = 0;
   #activeToolId: ToolId = "move";
@@ -102,6 +106,7 @@ export class EditorSessionController {
         case "toggle-group": this.#toggleGroup(action.layerId); return this.#sessionChanged();
         case "set-foreground-color": if (sameColor(this.#foregroundColor, action.color)) return { ok: true }; this.#setColor("foreground", action.color); return this.#sessionChanged();
         case "set-background-color": if (sameColor(this.#backgroundColor, action.color)) return { ok: true }; this.#setColor("background", action.color); return this.#sessionChanged();
+        case "set-brush-settings": { const next = brushSettings(this.#brushSettings, action.settings); if (sameBrushSettings(this.#brushSettings, next)) return { ok: true }; this.#brushSettings = next; return this.#sessionChanged(); }
         case "set-active-tool": if (action.toolId === this.#activeToolId) return { ok: true }; this.#setActiveTool(action.toolId); return this.#sessionChanged();
         case "set-visibility": { const layer = this.#requireLayer(action.layerId); return layer.visible === action.visible ? { ok: true } : this.executeDocumentCommand(new SetVisibilityCommand(action.layerId, action.visible)); }
         case "set-opacity": { const layer = this.#requireLayer(action.layerId); return layer.opacity === action.opacity ? { ok: true } : this.executeDocumentCommand(new SetOpacityCommand(action.layerId, action.opacity)); }
@@ -162,7 +167,7 @@ export class EditorSessionController {
     if (this.#selectedLayerId !== null && !this.#document.layerTree.find(this.#selectedLayerId)) this.#selectedLayerId = null;
     for (const id of this.#expandedGroupIds) if (this.#document.layerTree.find(id)?.kind !== "group") this.#expandedGroupIds.delete(id);
   }
-  #createSnapshot(): EditorSessionSnapshot { return createSnapshot(this.#documentView, this.#selectedLayerId, this.#document.pixelSelection, this.#expandedGroupIds, this.#foregroundColor, this.#backgroundColor, this.#documentRevision, this.#sessionRevision, this.#activeToolId, this.#interactionActive); }
+  #createSnapshot(): EditorSessionSnapshot { return createSnapshot(this.#documentView, this.#selectedLayerId, this.#document.pixelSelection, this.#expandedGroupIds, this.#foregroundColor, this.#backgroundColor, this.#brushSettings, this.#documentRevision, this.#sessionRevision, this.#activeToolId, this.#interactionActive); }
   #publish(documentChanged: boolean): void {
     if (documentChanged) this.#documentView = projectDocument(this.#document, this.#expandedGroupIds);
     else if (this.#snapshot.expandedGroupIds.length !== this.#expandedGroupIds.size || this.#snapshot.expandedGroupIds.some(id => !this.#expandedGroupIds.has(id))) this.#documentView = projectDocument(this.#document, this.#expandedGroupIds);
